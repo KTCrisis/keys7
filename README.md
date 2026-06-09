@@ -3,8 +3,15 @@
 MIDI capture node for a Yamaha P-125 — first node of a personal "fleet" of
 physical surfaces wired to [flux7-mesh](https://github.com/KTCrisis/flux7-mesh).
 
-**Phase 1 (this code): prove the wiring and the base UI, identically on Windows
-and Linux.** No chord theory, no AI yet — capture MIDI and show it live.
+It captures what you play and reads the harmony back in real time: the chord
+(extended chords and fifth-less voicings included), implied harmony from a
+dyad, the diatonic palette and cadence suggestions for a key — fixed or
+**auto-detected** from your playing — plus neighbouring keys and secondary
+dominants. Melody is separated from the harmonic core so a right-hand line
+doesn't pollute the chord name.
+
+All the theory is deterministic and local (no AI yet); that layer comes later,
+over flux7-mesh.
 
 ## Architecture
 
@@ -55,8 +62,18 @@ keys7.exe --source=device --port "P-125"
   run `keys7.exe --source=device` on Windows with the P-125 to confirm the WinMM
   callback and device matching. The mock path is the verified one.
 
+## Keys (in the TUI)
+
+```
+←/→  shift the key's tonic        m  cycle major / nat / harm / mel minor
+r    jump to the relative key     a  toggle auto key-detection
+e    toggle melody/harmony split  q  quit
+```
+
+`--key` accepts `C`, `Am`, `F#m`, … or `auto` to infer the key from playing.
+
 ## Where this is going
 
-Phase 1 is capture + UI. Next: chord recognition (deterministic), then
-scale-locked cadence suggestions (deterministic), then style/memory-aware
-coaching (the layer where AI earns its place, on the mesh).
+Deterministic theory is in (chords, dyads, cadences, key detection, neighbours,
+secondary dominants). Next: style/memory-aware coaching — the layer where AI
+earns its place — over flux7-mesh, drawing on what you've played.
