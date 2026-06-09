@@ -1,10 +1,13 @@
 package ui
 
 import (
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
 
 	"keys7/internal/mesh"
 	"keys7/internal/midi"
+	"keys7/internal/session"
 	"keys7/internal/theory"
 )
 
@@ -23,6 +26,8 @@ type Model struct {
 	port       string
 	events     <-chan midi.Event
 	fwd        mesh.Forwarder
+	sink       session.Sink // harmonic-event log for the AI layer
+	lastLogKey string
 
 	key         theory.Key
 	splitMelody bool // peel isolated top notes as melody (vs fold into the chord)
@@ -50,7 +55,7 @@ const detectWindow = 32
 // New builds the model. `events` is the source's channel; `fwd` is the mesh
 // seam (a NopForwarder for now); `key` is the starting key, and `autoKey`
 // enables inferring it from what's played.
-func New(sourceKind, port string, key theory.Key, autoKey bool, events <-chan midi.Event, fwd mesh.Forwarder) Model {
+func New(sourceKind, port string, key theory.Key, autoKey bool, events <-chan midi.Event, fwd mesh.Forwarder, sink session.Sink) Model {
 	return Model{
 		sourceKind:  sourceKind,
 		port:        port,
@@ -59,6 +64,7 @@ func New(sourceKind, port string, key theory.Key, autoKey bool, events <-chan mi
 		autoKey:     autoKey,
 		events:      events,
 		fwd:         fwd,
+		sink:        sink,
 		held:        make(map[uint8]bool),
 	}
 }
@@ -118,6 +124,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "x":
 			m.reset() // forget everything played, keep settings
 		}
+		m.logKeyIfChanged()
 	case eventMsg:
 		ev := midi.Event(msg)
 		m.apply(ev)
@@ -154,6 +161,7 @@ func (m *Model) apply(ev midi.Event) {
 		m.recent = m.recent[len(m.recent)-maxRecent:]
 	}
 	m.recompute()
+	m.logKeyIfChanged()
 }
 
 // reset forgets everything played — held notes, recent events, the key-detection
@@ -169,6 +177,10 @@ func (m *Model) reset() {
 	m.lastChord, m.lastOK = theory.Chord{}, false
 	m.conf = 0
 	m.pedal = false
+	if m.sink != nil {
+		m.sink.Emit(session.HarmonicEvent{Time: time.Now().UTC().Format(time.RFC3339), Kind: "reset"})
+	}
+	m.lastLogKey = "" // re-log the key on the next note, to anchor the new segment
 }
 
 // recompute derives the chord state from the held notes. It tracks the previous
@@ -182,10 +194,59 @@ func (m *Model) recompute() {
 	}
 	chord, ok := theory.Identify(core)
 	if ok {
-		if m.lastOK && chord.String() != m.lastChord.String() {
-			m.prevChord, m.prevOK = m.lastChord, true
+		isNew := !m.lastOK || chord.StringIn(theory.Letters) != m.lastChord.StringIn(theory.Letters)
+		if isNew {
+			if m.lastOK {
+				m.prevChord, m.prevOK = m.lastChord, true
+			}
+			m.logChord(chord)
 		}
 		m.lastChord, m.lastOK = chord, true
 	}
 	m.core, m.melody, m.chord, m.chordOK = core, melody, chord, ok
+}
+
+// logChord emits a harmonic event for a newly recognized chord, annotated with
+// its role in the current key (degree, or secondary dominant / non-diatonic).
+func (m *Model) logChord(chord theory.Chord) {
+	if m.sink == nil {
+		return
+	}
+	ev := session.HarmonicEvent{
+		Time:    time.Now().UTC().Format(time.RFC3339),
+		Kind:    "chord",
+		Chord:   chord.StringIn(theory.Letters),
+		Solfege: chord.StringIn(theory.Solfege),
+		Key:     m.key.StringIn(theory.Letters),
+	}
+	if dc, ok := theory.DegreeOf(m.key, chord); ok {
+		ev.Roman, ev.Degree = dc.Roman, dc.Degree
+	} else {
+		ev.Note = "non-diatonic"
+		for _, sd := range theory.SecondaryDominants(m.key) {
+			if sd.Chord.StringIn(theory.Letters) == chord.StringIn(theory.Letters) {
+				ev.Note = "secondary dominant " + sd.Label + " → " + sd.Target.Roman
+				break
+			}
+		}
+	}
+	m.sink.Emit(ev)
+}
+
+// logKeyIfChanged emits a key event when the active key changed since last logged.
+func (m *Model) logKeyIfChanged() {
+	if m.sink == nil {
+		return
+	}
+	k := m.key.StringIn(theory.Letters)
+	if k == m.lastLogKey {
+		return
+	}
+	m.lastLogKey = k
+	m.sink.Emit(session.HarmonicEvent{
+		Time: time.Now().UTC().Format(time.RFC3339),
+		Kind: "key",
+		Key:  k,
+		Conf: m.conf,
+	})
 }

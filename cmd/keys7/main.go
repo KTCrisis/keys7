@@ -10,6 +10,7 @@ import (
 
 	"keys7/internal/mesh"
 	"keys7/internal/midi"
+	"keys7/internal/session"
 	"keys7/internal/theory"
 	"keys7/internal/ui"
 )
@@ -19,6 +20,7 @@ func main() {
 	port := flag.String("port", "", `device port name match, e.g. "P-125" (device source only)`)
 	keyFlag := flag.String("key", "C", `key for cadence hints: "C", "Am", "F#m", or "auto" to infer it from playing`)
 	notationFlag := flag.String("notation", "letters", `note spelling: "letters" (C D E) or "solfege" (Do Ré Mi)`)
+	logFlag := flag.String("log", "", "append heard chords/keys as JSONL to this file (the AI bridge)")
 	flag.Parse()
 
 	if strings.EqualFold(*notationFlag, "solfege") || strings.EqualFold(*notationFlag, "fr") {
@@ -42,7 +44,18 @@ func main() {
 	}
 	defer src.Close()
 
-	m := ui.New(*source, *port, key, autoKey, src.Events(), mesh.NopForwarder{})
+	var sink session.Sink = session.NopSink{}
+	if *logFlag != "" {
+		f, err := os.OpenFile(*logFlag, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "keys7:", err)
+			os.Exit(1)
+		}
+		defer f.Close()
+		sink = session.NewJSONLSink(f)
+	}
+
+	m := ui.New(*source, *port, key, autoKey, src.Events(), mesh.NopForwarder{}, sink)
 	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "keys7:", err)
 		os.Exit(1)
