@@ -1,79 +1,100 @@
 # keys7
 
-MIDI capture node for a Yamaha P-125 — first node of a personal "fleet" of
-physical surfaces wired to [flux7-mesh](https://github.com/KTCrisis/flux7-mesh).
+A live harmony assistant for a MIDI piano (developed on a Yamaha P-125) — and
+the first node of a personal "fleet" of physical surfaces wired to
+[flux7-mesh](https://github.com/KTCrisis/flux7-mesh).
 
-It captures what you play and reads the harmony back in real time: the chord
-(extended chords and fifth-less voicings included), implied harmony from a
-dyad, the diatonic palette and cadence suggestions for a key — fixed or
-**auto-detected** from your playing — plus neighbouring keys and secondary
-dominants. Melody is separated from the harmonic core so a right-hand line
-doesn't pollute the chord name.
+You play; keys7 reads the harmony back in real time and can hand it to an AI
+that listens and suggests:
 
-All the theory is deterministic and local (no AI yet); that layer comes later,
-over flux7-mesh.
+- **Chords** — triads through 13ths, fifth-less voicings, inversions as slash
+  chords, dyads named with the harmonies they imply.
+- **Key** — fixed, **auto-detected** from playing (Krumhansl-Schmuckler), or
+  **drone** (tonic pinned to the bass, for pedal/modal playing).
+- **Suggestions** — the diatonic palette with the current degree lit, cadence
+  moves, neighbouring keys, and secondary dominants; a chord you play that
+  fulfils a suggestion lights up.
+- **Melody split** — a right-hand line over a held chord is separated from the
+  harmonic core, so it doesn't pollute the chord name.
+- **Notation** — letters and solfège shown together (A7 / La7).
+- **AI bridge** — `--log` streams what's heard as JSONL for an assistant to read.
+
+The theory is deterministic and local. The AI layer reads the log (today) and
+will move onto the mesh (real-time) later.
 
 ## Architecture
 
-Everything hangs off one interface, `midi.MidiSource`. The UI never knows where
-events come from:
-
-- **`deviceSource`** — the real P-125, read on Windows via WinMM (`winmm.dll`)
-  in **pure Go**: syscalls plus a callback created with `windows.NewCallback`.
-  No CGO, no RtMidi, no third-party MIDI module — so `keys7.exe` cross-compiles
-  straight from WSL.
-- **`mockSource`** — a synthetic loop (a C-major triad + a pedalled scale run).
-  The default. Lets development and tests run on WSL with no piano attached.
+Everything hangs off one interface, `midi.MidiSource`; the rest never knows
+where events come from.
 
 ```
-cmd/keys7/main.go        entry; flags --source=device|mock, --port
-internal/midi/           source interface, event model, note naming
-  device_windows.go        //go:build windows  (WinMM, pure Go)
-  device_other.go          //go:build !windows (returns a clear error)
-  mock.go                  synthetic source (default)
-internal/ui/             Bubble Tea model + view
-internal/mesh/           Forwarder seam (no-op for now)
+cmd/keys7/main.go     entry; flags --source --port --key --notation --log
+internal/midi/        source interface + events
+  device_windows.go     //go:build windows  — WinMM, pure Go (no CGO)
+  device_other.go       //go:build !windows — clear error; use mock
+  mock.go               synthetic source (default, for WSL/dev)
+internal/theory/      pure pitch math: chords, dyads, keys/modes, cadences,
+                      neighbours, secondary dominants, key detection, notation
+internal/ui/          Bubble Tea model + view (panels)
+internal/session/     harmonic-event log (the AI bridge)
+internal/mesh/        Forwarder seam (no-op; real-time transport later)
 ```
+
+`deviceSource` reads the piano on Windows via `winmm.dll` in pure Go — syscalls
+plus a `windows.NewCallback` — so `keys7.exe` cross-compiles from WSL with no
+CGO, no RtMidi, no third-party MIDI module.
 
 ## Run
 
 ```bash
 make run-mock            # synthetic source — works anywhere, incl. WSL
 make build               # pure-Go build (mock), no CGO
+make build-windows       # cross-compiles bin/keys7.exe from WSL, no toolchain
+make test                # theory + midi + session tests
 ```
 
-For the real piano, build the Windows binary (from WSL — no toolchain needed)
-and run it on Windows with the P-125 connected:
+On Windows, with the P-125 connected (DAW closed — the USB-MIDI port is
+exclusive):
 
-```bash
-make build-windows                      # cross-compiles bin/keys7.exe, no CGO
-# then, on Windows:
-keys7.exe --source=device --port "P-125"
 ```
+keys7.exe --source=device --key auto --log "C:\…\session.jsonl"
+```
+
+- `--key` : `C`, `Am`, `F#m`, … · `auto` (infer) · `drone` (pin to bass)
+- `--notation` : `letters` (C D E) · `solfege` (Do Ré Mi)
+- `--log <file>` : append heard chords/keys as JSONL (the AI bridge)
+
+## TUI keys
+
+```
+←/→  shift the tonic         m  cycle major / natural / harmonic / melodic minor
+r    relative key            a  auto key-detection      d  drone (bass-pinned)
+e    melody/harmony split    n  notation (letters↔solfège)
+x    reset (forget playing)  q  quit
+```
+
+## The AI bridge
+
+With `--log`, keys7 appends one JSON object per event: a `chord` (letters +
+solfège, with its diatonic degree, or the secondary dominant it is if
+chromatic), a `key` change (with detection confidence), or a `reset` marker.
+An assistant reads the file to know what's being played and suggest over it —
+the concrete realisation of the otherwise-dormant mesh `Forwarder` seam. Put the
+log on a path both sides can see (e.g. under `/mnt/c/…` from WSL).
 
 ## Cross-platform notes
 
-- The P-125 is USB-MIDI **on Windows**; WSL doesn't see USB-MIDI natively, so the
+- The P-125 is USB-MIDI **on Windows**; WSL doesn't see USB-MIDI natively, so
   device mode runs on the Windows host. WSL is the dev/mock environment.
-- The P-125 exposes a single USB-MIDI port. It's exclusive on Windows: if another
-  app (e.g. a DAW) holds it, keys7 can't open it at the same time. Run it solo,
-  or use a virtual MIDI splitter (loopMIDI) to share — that's a later concern.
-- The **device path compiles but is not yet validated against live hardware** —
-  run `keys7.exe --source=device` on Windows with the P-125 to confirm the WinMM
-  callback and device matching. The mock path is the verified one.
+- Single USB-MIDI port, exclusive on Windows: run keys7 with the DAW closed, or
+  share via a virtual MIDI splitter (loopMIDI) — a later concern.
+- The device path is **validated on the P-125**; the mock path is the dev one.
 
-## Keys (in the TUI)
+## Roadmap (v2)
 
-```
-←/→  shift the key's tonic        m  cycle major / nat / harm / mel minor
-r    jump to the relative key     a  toggle auto key-detection
-e    toggle melody/harmony split  q  quit
-```
-
-`--key` accepts `C`, `Am`, `F#m`, … or `auto` to infer the key from playing.
-
-## Where this is going
-
-Deterministic theory is in (chords, dyads, cadences, key detection, neighbours,
-secondary dominants). Next: style/memory-aware coaching — the layer where AI
-earns its place — over flux7-mesh, drawing on what you've played.
+- Real-time AI over the mesh (SSE/MCP, "like OBS") instead of the file pull, with
+  style-aware coaching drawing on flux7-memory and the Renoise analyses corpus.
+- Richer drone/modal detection (distinguish Dorian, Phrygian, … not just
+  major/minor by the third).
+- Pedal-aware chord segmentation (notes still sounding under sustain).
+- UI-layer tests; packaging / a tagged release.
