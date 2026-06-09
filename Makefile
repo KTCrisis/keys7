@@ -11,10 +11,11 @@ build:
 run-mock:
 	go run $(PKG) --source=mock
 
-# Device-capable Windows build. Intended to run ON the Windows host (the P-125
-# is USB-MIDI on Windows; WSL doesn't see it). Needs CGO + a C toolchain + RtMidi.
+# Windows build (the P-125 is USB-MIDI on Windows; WSL doesn't see it). The
+# device source uses WinMM in pure Go, so this cross-compiles from WSL with no
+# CGO and no toolchain — just copy bin/keys7.exe to Windows and run it.
 build-windows:
-	GOOS=windows GOARCH=amd64 CGO_ENABLED=1 go build -tags midi_device -o bin/$(BINARY).exe $(PKG)
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o bin/$(BINARY).exe $(PKG)
 
 vet:
 	go vet ./...
