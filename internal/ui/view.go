@@ -50,9 +50,16 @@ func (m Model) View() string {
 	b.WriteString("\n")
 
 	b.WriteString(labelStyle.Render("chord "))
-	if chordOK {
+	switch {
+	case chordOK:
 		b.WriteString(chordStyle.Render(chord.String()))
-	} else {
+	case len(distinctPCs(notes)) == 2:
+		pcs := distinctPCs(notes)
+		b.WriteString(noteStyle.Render(theory.IntervalName((pcs[1] - pcs[0] + 12) % 12)))
+		if impl := theory.DyadImplications(pcs[0], pcs[1], &m.key); len(impl) > 0 {
+			b.WriteString(dimStyle.Render("  implies ") + chordStyle.Render(symbolsJoin(impl, " ")))
+		}
+	default:
 		b.WriteString(dimStyle.Render("—"))
 	}
 	b.WriteString("\n")
@@ -116,6 +123,28 @@ func (m Model) renderTheory(chord theory.Chord, chordOK bool) string {
 		}
 	}
 	return b.String()
+}
+
+// distinctPCs returns the unique pitch classes of the notes, ascending.
+func distinctPCs(notes []uint8) []uint8 {
+	seen := map[uint8]bool{}
+	var pcs []uint8
+	for _, n := range notes {
+		if pc := n % 12; !seen[pc] {
+			seen[pc] = true
+			pcs = append(pcs, pc)
+		}
+	}
+	sort.Slice(pcs, func(i, j int) bool { return pcs[i] < pcs[j] })
+	return pcs
+}
+
+func symbolsJoin(cs []theory.Chord, sep string) string {
+	parts := make([]string, len(cs))
+	for i, c := range cs {
+		parts[i] = c.String()
+	}
+	return strings.Join(parts, sep)
 }
 
 func sortedHeld(held map[uint8]bool) []uint8 {
