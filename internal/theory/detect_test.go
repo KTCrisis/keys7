@@ -31,6 +31,16 @@ func TestDetectKey(t *testing.T) {
 	}
 }
 
+func TestModeOverTonic(t *testing.T) {
+	// over a C drone, an E (maj 3rd) reads major; an Eb (min 3rd) reads minor.
+	if m := ModeOverTonic([]uint8{0, 4, 7, 4}, 0); m != Major {
+		t.Errorf("C drone with E = %v, want Major", m)
+	}
+	if m := ModeOverTonic([]uint8{0, 3, 7, 3}, 0); m != NaturalMinor {
+		t.Errorf("C drone with Eb = %v, want NaturalMinor", m)
+	}
+}
+
 func TestDetectKeyTooFew(t *testing.T) {
 	if _, _, ok := DetectKey([]uint8{0, 4}); ok {
 		t.Error("expected ok=false for fewer than 3 notes")

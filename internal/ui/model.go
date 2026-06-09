@@ -31,7 +31,7 @@ type Model struct {
 
 	key         theory.Key
 	splitMelody bool // peel isolated top notes as melody (vs fold into the chord)
-	autoKey     bool // infer the key from what's played
+	keySrc      KeySource
 	conf        float64
 	recentPCs   []uint8 // sliding window of recent note-on pitch classes
 	held        map[uint8]bool
@@ -52,16 +52,25 @@ type Model struct {
 // detectWindow is how many recent note-ons feed key detection.
 const detectWindow = 32
 
+// KeySource is how the active key is chosen.
+type KeySource int
+
+const (
+	KeyManual KeySource = iota // set by the user (←/→, m, r)
+	KeyAuto                    // inferred from playing (Krumhansl-Schmuckler)
+	KeyDrone                   // tonic pinned to the bass, mode from its third
+)
+
 // New builds the model. `events` is the source's channel; `fwd` is the mesh
 // seam (a NopForwarder for now); `key` is the starting key, and `autoKey`
 // enables inferring it from what's played.
-func New(sourceKind, port string, key theory.Key, autoKey bool, events <-chan midi.Event, fwd mesh.Forwarder, sink session.Sink) Model {
+func New(sourceKind, port string, key theory.Key, keySrc KeySource, events <-chan midi.Event, fwd mesh.Forwarder, sink session.Sink) Model {
 	return Model{
 		sourceKind:  sourceKind,
 		port:        port,
 		key:         key,
 		splitMelody: true,
-		autoKey:     autoKey,
+		keySrc:      keySrc,
 		events:      events,
 		fwd:         fwd,
 		sink:        sink,
@@ -94,12 +103,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c", "esc":
 			return m, tea.Quit
 		case "right":
-			m.key.Tonic, m.autoKey = (m.key.Tonic+1)%12, false
+			m.key.Tonic, m.keySrc = (m.key.Tonic+1)%12, KeyManual
 		case "left":
-			m.key.Tonic, m.autoKey = (m.key.Tonic+11)%12, false
+			m.key.Tonic, m.keySrc = (m.key.Tonic+11)%12, KeyManual
 		case "m":
 			// cycle major → natural → harmonic → melodic minor (manual override)
-			m.key.Mode, m.autoKey = m.key.Mode.Next(), false
+			m.key.Mode, m.keySrc = m.key.Mode.Next(), KeyManual
 		case "r":
 			// jump to the relative key (same notes, move the tonic):
 			// major → its relative natural minor, any minor → relative major.
@@ -108,14 +117,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.key.Tonic, m.key.Mode = (m.key.Tonic+3)%12, theory.Major
 			}
-			m.autoKey = false
+			m.keySrc = KeyManual
 		case "a":
-			m.autoKey = !m.autoKey
-			if m.autoKey {
-				if k, conf, ok := theory.DetectKey(m.recentPCs); ok {
-					m.key, m.conf = k, conf
-				}
+			if m.keySrc == KeyAuto {
+				m.keySrc = KeyManual
+			} else {
+				m.keySrc = KeyAuto
 			}
+			m.trackKey()
+		case "d":
+			if m.keySrc == KeyDrone {
+				m.keySrc = KeyManual
+			} else {
+				m.keySrc = KeyDrone
+			}
+			m.trackKey()
 		case "e":
 			m.splitMelody = !m.splitMelody
 			m.recompute()
@@ -145,11 +161,7 @@ func (m *Model) apply(ev midi.Event) {
 		if len(m.recentPCs) > detectWindow {
 			m.recentPCs = m.recentPCs[len(m.recentPCs)-detectWindow:]
 		}
-		if m.autoKey {
-			if k, conf, ok := theory.DetectKey(m.recentPCs); ok {
-				m.key, m.conf = k, conf
-			}
-		}
+		m.trackKey()
 	case ev.Kind == midi.NoteOff, ev.Kind == midi.NoteOn && ev.Data2 == 0:
 		// A NoteOn with velocity 0 is the running-status convention for NoteOff.
 		delete(m.held, ev.Data1)
@@ -204,6 +216,34 @@ func (m *Model) recompute() {
 		m.lastChord, m.lastOK = chord, true
 	}
 	m.core, m.melody, m.chord, m.chordOK = core, melody, chord, ok
+}
+
+// trackKey updates the active key from playing, per the key source. Auto runs
+// Krumhansl-Schmuckler over the recent window; drone pins the tonic to the bass
+// (lowest held note) and reads the mode from its third — steady on pedal/modal
+// playing, where auto flickers between relative keys. Manual does nothing.
+func (m *Model) trackKey() {
+	switch m.keySrc {
+	case KeyAuto:
+		if k, conf, ok := theory.DetectKey(m.recentPCs); ok {
+			m.key, m.conf = k, conf
+		}
+	case KeyDrone:
+		if bass, ok := m.bassPC(); ok {
+			m.key = theory.Key{Tonic: bass, Mode: theory.ModeOverTonic(m.recentPCs, bass)}
+		}
+	}
+}
+
+// bassPC returns the pitch class of the lowest held note.
+func (m *Model) bassPC() (uint8, bool) {
+	lowest, found := uint8(0), false
+	for n := range m.held {
+		if !found || n < lowest {
+			lowest, found = n, true
+		}
+	}
+	return lowest % 12, found
 }
 
 // logChord emits a harmonic event for a newly recognized chord, annotated with

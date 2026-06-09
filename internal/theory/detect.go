@@ -46,6 +46,28 @@ func DetectKey(pcs []uint8) (Key, float64, bool) {
 	return best, bestR, true
 }
 
+// ModeOverTonic picks Major or NaturalMinor for a FIXED tonic, by whether the
+// major or minor third above it is more present in the notes. This is the right
+// model for drone/pedal playing: the bass is the centre, and the third sounded
+// over it colours the mode — no relative-key flicker, because the tonic is
+// pinned rather than inferred.
+func ModeOverTonic(pcs []uint8, tonic uint8) Mode {
+	maj3, min3 := (tonic+4)%12, (tonic+3)%12
+	var maj, min int
+	for _, pc := range pcs {
+		switch pc % 12 {
+		case maj3:
+			maj++
+		case min3:
+			min++
+		}
+	}
+	if min > maj {
+		return NaturalMinor
+	}
+	return Major
+}
+
 func pearson(a, b []float64) float64 {
 	n := float64(len(a))
 	var sa, sb float64
