@@ -24,11 +24,12 @@ type Model struct {
 	events     <-chan midi.Event
 	fwd        mesh.Forwarder
 
-	key    theory.Key
-	held   map[uint8]bool
-	pedal  bool
-	recent []midi.Event
-	closed bool
+	key         theory.Key
+	splitMelody bool // peel isolated top notes as melody (vs fold into the chord)
+	held        map[uint8]bool
+	pedal       bool
+	recent      []midi.Event
+	closed      bool
 }
 
 // New builds the model. `events` is the source's channel; `fwd` is the mesh
@@ -37,10 +38,11 @@ func New(sourceKind, port string, key theory.Key, events <-chan midi.Event, fwd 
 	return Model{
 		sourceKind: sourceKind,
 		port:       port,
-		key:        key,
-		events:     events,
-		fwd:        fwd,
-		held:       make(map[uint8]bool),
+		key:         key,
+		splitMelody: true,
+		events:      events,
+		fwd:         fwd,
+		held:        make(map[uint8]bool),
 	}
 }
 
@@ -78,6 +80,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.key.Mode = theory.Major
 			}
+		case "e":
+			m.splitMelody = !m.splitMelody
 		}
 	case eventMsg:
 		ev := midi.Event(msg)
