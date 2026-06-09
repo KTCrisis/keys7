@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"keys7/internal/midi"
+	"keys7/internal/theory"
 )
 
 var (
@@ -16,6 +17,7 @@ var (
 	okStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
 	warnStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 	chordStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("123"))
+	noteStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	dimStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 )
 
@@ -36,11 +38,21 @@ func (m Model) View() string {
 	}
 	b.WriteString(labelStyle.Render("status ") + status + "\n\n")
 
+	notes := sortedHeld(m.held)
+
 	b.WriteString(labelStyle.Render("held  "))
-	if len(m.held) == 0 {
+	if len(notes) == 0 {
 		b.WriteString(dimStyle.Render("—"))
 	} else {
-		b.WriteString(chordStyle.Render(strings.Join(heldNames(m.held), " ")))
+		b.WriteString(noteStyle.Render(strings.Join(noteNames(notes), " ")))
+	}
+	b.WriteString("\n")
+
+	b.WriteString(labelStyle.Render("chord "))
+	if c, ok := theory.Identify(notes); ok {
+		b.WriteString(chordStyle.Render(c.String()))
+	} else {
+		b.WriteString(dimStyle.Render("—"))
 	}
 	b.WriteString("\n")
 
@@ -59,12 +71,16 @@ func (m Model) View() string {
 	return b.String()
 }
 
-func heldNames(held map[uint8]bool) []string {
+func sortedHeld(held map[uint8]bool) []uint8 {
 	notes := make([]uint8, 0, len(held))
 	for n := range held {
 		notes = append(notes, n)
 	}
 	sort.Slice(notes, func(i, j int) bool { return notes[i] < notes[j] })
+	return notes
+}
+
+func noteNames(notes []uint8) []string {
 	names := make([]string, len(notes))
 	for i, n := range notes {
 		names[i] = midi.NoteName(n)
