@@ -27,18 +27,13 @@ var (
 
 func (m Model) View() string {
 	allNotes := sortedHeld(m.held)
-	core, melody := allNotes, []uint8(nil)
-	if m.splitMelody {
-		core, melody = theory.SplitMelody(allNotes, theory.DefaultMelodyGap)
-	}
-	chord, chordOK := theory.Identify(core)
 
 	top := lipgloss.JoinHorizontal(
 		lipgloss.Top,
-		panelStyle.Width(32).MarginRight(2).Render(m.playingPanel(allNotes, core, melody, chord, chordOK)),
+		panelStyle.Width(32).MarginRight(2).Render(m.playingPanel(allNotes)),
 		panelStyle.Width(32).Render(m.keyPanel()),
 	)
-	harmony := panelStyle.Width(68).Render(m.harmonyPanel(chord, chordOK))
+	harmony := panelStyle.Width(68).Render(m.harmonyPanel())
 
 	footer := dimStyle.Render("q quit · a auto · m mode · r relative · e split · ←/→ tonic")
 
@@ -64,15 +59,18 @@ func (m Model) header() string {
 		"      " + labelStyle.Render(src) + dimStyle.Render(" · ") + status
 }
 
-func (m Model) playingPanel(allNotes, core, melody []uint8, chord theory.Chord, chordOK bool) string {
+func (m Model) playingPanel(allNotes []uint8) string {
 	var b strings.Builder
 	b.WriteString(panelTitleStyle.Render("playing") + "\n")
 
-	pcs := distinctPCs(core)
+	pcs := distinctPCs(m.core)
 	chordStr := dimStyle.Render("—")
 	switch {
-	case chordOK:
-		chordStr = chordBigStyle.Render(chord.String())
+	case m.chordOK:
+		chordStr = chordBigStyle.Render(m.chord.String())
+		if label, ok := m.fulfilledSuggestion(); ok {
+			chordStr += highlightStyle.Render(" ✓ " + label)
+		}
 	case len(pcs) == 2:
 		chordStr = noteStyle.Render(theory.IntervalName((pcs[1]-pcs[0]+12)%12))
 		if impl := theory.DyadImplications(pcs[0], pcs[1], &m.key); len(impl) > 0 {
@@ -81,7 +79,7 @@ func (m Model) playingPanel(allNotes, core, melody []uint8, chord theory.Chord, 
 	}
 	b.WriteString(labelStyle.Render("chord  ") + chordStr + "\n")
 	b.WriteString(labelStyle.Render("held   ") + valueOrDash(noteNames(allNotes)) + "\n")
-	b.WriteString(labelStyle.Render("melody ") + valueOrDash(noteNames(melody)) + "\n")
+	b.WriteString(labelStyle.Render("melody ") + valueOrDash(noteNames(m.melody)) + "\n")
 
 	pedal := dimStyle.Render("off")
 	if m.pedal {
@@ -104,14 +102,19 @@ func (m Model) keyPanel() string {
 	return b.String()
 }
 
-func (m Model) harmonyPanel(chord theory.Chord, chordOK bool) string {
+func (m Model) harmonyPanel() string {
 	var b strings.Builder
 	b.WriteString(panelTitleStyle.Render("harmony") + "\n")
 
+	curRoot, playing := int(-1), ""
+	if m.chordOK {
+		curRoot, playing = int(m.chord.Root), m.chord.String()
+	}
+
 	// diatonic palette, current degree highlighted
 	curDeg := 0
-	if chordOK {
-		if dc, ok := theory.DegreeOf(m.key, chord); ok {
+	if m.chordOK {
+		if dc, ok := theory.DegreeOf(m.key, m.chord); ok {
 			curDeg = dc.Degree
 		}
 	}
@@ -125,16 +128,16 @@ func (m Model) harmonyPanel(chord theory.Chord, chordOK bool) string {
 	}
 	b.WriteString(labelStyle.Render("in key  ") + strings.Join(cells, "  ") + "\n")
 
-	// next chords
+	// next chords — highlight one if the player is currently on it
 	b.WriteString(labelStyle.Render("next    "))
 	switch {
-	case !chordOK:
+	case !m.chordOK:
 		b.WriteString(dimStyle.Render("— play a chord"))
 	default:
-		if ss, ok := theory.Suggest(m.key, chord); ok && len(ss) > 0 {
+		if ss, ok := theory.Suggest(m.key, m.chord); ok && len(ss) > 0 {
 			parts := make([]string, len(ss))
 			for i, s := range ss {
-				parts[i] = chordStyle.Render(s.Chord.Chord.String()) + dimStyle.Render(" "+s.Label)
+				parts[i] = tagChord(s.Chord.Chord.String(), s.Label, s.Chord.Chord.String() == playing)
 			}
 			b.WriteString(strings.Join(parts, dimStyle.Render("  ·  ")))
 		} else {
@@ -143,22 +146,54 @@ func (m Model) harmonyPanel(chord theory.Chord, chordOK bool) string {
 	}
 	b.WriteString("\n")
 
-	// neighbouring keys
+	// neighbouring keys — highlight one whose tonic chord is being played
 	nks := theory.NeighborKeys(m.key)
 	near := make([]string, len(nks))
 	for i, nk := range nks {
-		near[i] = dimStyle.Render(nk.Relation[:3]+" ") + chordStyle.Render(shortKey(nk.Key))
+		sk := shortKey(nk.Key)
+		style := chordStyle
+		if int(nk.Key.Tonic) == curRoot {
+			style = highlightStyle
+		}
+		near[i] = dimStyle.Render(nk.Relation[:3]+" ") + style.Render(sk)
 	}
 	b.WriteString(labelStyle.Render("near    ") + strings.Join(near, dimStyle.Render(" · ")) + "\n")
 
-	// secondary dominants (passing chords)
+	// secondary dominants — highlight the one currently played
 	sds := theory.SecondaryDominants(m.key)
 	pass := make([]string, len(sds))
 	for i, sd := range sds {
-		pass[i] = chordStyle.Render(sd.Chord.String()) + dimStyle.Render(" "+sd.Label)
+		pass[i] = tagChord(sd.Chord.String(), sd.Label, sd.Chord.String() == playing)
 	}
 	b.WriteString(labelStyle.Render("pass    ") + strings.Join(pass, dimStyle.Render(" · ")))
 	return b.String()
+}
+
+// tagChord renders "symbol label", in pink when the player is on it.
+func tagChord(symbol, label string, active bool) string {
+	if active {
+		return highlightStyle.Render(symbol) + highlightStyle.Render(" "+label)
+	}
+	return chordStyle.Render(symbol) + dimStyle.Render(" "+label)
+}
+
+// fulfilledSuggestion reports whether the current chord is one the previous
+// chord suggested, returning the cadence label (e.g. "authentic cadence").
+func (m Model) fulfilledSuggestion() (string, bool) {
+	if !m.chordOK || !m.prevOK {
+		return "", false
+	}
+	ss, ok := theory.Suggest(m.key, m.prevChord)
+	if !ok {
+		return "", false
+	}
+	cur := m.chord.String()
+	for _, s := range ss {
+		if s.Chord.Chord.String() == cur {
+			return s.Label, true
+		}
+	}
+	return "", false
 }
 
 func (m Model) recentLine() string {
