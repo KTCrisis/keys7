@@ -26,20 +26,28 @@ type Model struct {
 
 	key         theory.Key
 	splitMelody bool // peel isolated top notes as melody (vs fold into the chord)
+	autoKey     bool // infer the key from what's played
+	conf        float64
+	recentPCs   []uint8 // sliding window of recent note-on pitch classes
 	held        map[uint8]bool
 	pedal       bool
 	recent      []midi.Event
 	closed      bool
 }
 
+// detectWindow is how many recent note-ons feed key detection.
+const detectWindow = 32
+
 // New builds the model. `events` is the source's channel; `fwd` is the mesh
-// seam (a NopForwarder for now); `key` is the fixed key for cadence hints.
-func New(sourceKind, port string, key theory.Key, events <-chan midi.Event, fwd mesh.Forwarder) Model {
+// seam (a NopForwarder for now); `key` is the starting key, and `autoKey`
+// enables inferring it from what's played.
+func New(sourceKind, port string, key theory.Key, autoKey bool, events <-chan midi.Event, fwd mesh.Forwarder) Model {
 	return Model{
-		sourceKind: sourceKind,
-		port:       port,
+		sourceKind:  sourceKind,
+		port:        port,
 		key:         key,
 		splitMelody: true,
+		autoKey:     autoKey,
 		events:      events,
 		fwd:         fwd,
 		held:        make(map[uint8]bool),
@@ -71,21 +79,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c", "esc":
 			return m, tea.Quit
 		case "right":
-			m.key.Tonic = (m.key.Tonic + 1) % 12
+			m.key.Tonic, m.autoKey = (m.key.Tonic+1)%12, false
 		case "left":
-			m.key.Tonic = (m.key.Tonic + 11) % 12
+			m.key.Tonic, m.autoKey = (m.key.Tonic+11)%12, false
 		case "m":
-			// cycle major → natural → harmonic → melodic minor
-			m.key.Mode = m.key.Mode.Next()
+			// cycle major → natural → harmonic → melodic minor (manual override)
+			m.key.Mode, m.autoKey = m.key.Mode.Next(), false
 		case "r":
 			// jump to the relative key (same notes, move the tonic):
 			// major → its relative natural minor, any minor → relative major.
 			if m.key.Mode == theory.Major {
-				m.key.Tonic = (m.key.Tonic + 9) % 12
-				m.key.Mode = theory.NaturalMinor
+				m.key.Tonic, m.key.Mode = (m.key.Tonic+9)%12, theory.NaturalMinor
 			} else {
-				m.key.Tonic = (m.key.Tonic + 3) % 12
-				m.key.Mode = theory.Major
+				m.key.Tonic, m.key.Mode = (m.key.Tonic+3)%12, theory.Major
+			}
+			m.autoKey = false
+		case "a":
+			m.autoKey = !m.autoKey
+			if m.autoKey {
+				if k, conf, ok := theory.DetectKey(m.recentPCs); ok {
+					m.key, m.conf = k, conf
+				}
 			}
 		case "e":
 			m.splitMelody = !m.splitMelody
@@ -106,6 +120,15 @@ func (m *Model) apply(ev midi.Event) {
 	switch {
 	case ev.Kind == midi.NoteOn && ev.Data2 > 0:
 		m.held[ev.Data1] = true
+		m.recentPCs = append(m.recentPCs, ev.Data1%12)
+		if len(m.recentPCs) > detectWindow {
+			m.recentPCs = m.recentPCs[len(m.recentPCs)-detectWindow:]
+		}
+		if m.autoKey {
+			if k, conf, ok := theory.DetectKey(m.recentPCs); ok {
+				m.key, m.conf = k, conf
+			}
+		}
 	case ev.Kind == midi.NoteOff, ev.Kind == midi.NoteOn && ev.Data2 == 0:
 		// A NoteOn with velocity 0 is the running-status convention for NoteOff.
 		delete(m.held, ev.Data1)
