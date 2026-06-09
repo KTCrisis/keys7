@@ -115,6 +115,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.recompute()
 		case "n":
 			theory.ToggleNotation() // display-only; chord state is unchanged
+		case "x":
+			m.reset() // forget everything played, keep settings
 		}
 	case eventMsg:
 		ev := midi.Event(msg)
@@ -152,6 +154,21 @@ func (m *Model) apply(ev midi.Event) {
 		m.recent = m.recent[len(m.recent)-maxRecent:]
 	}
 	m.recompute()
+}
+
+// reset forgets everything played — held notes, recent events, the key-detection
+// window and chord history — while keeping the user's settings (key, notation,
+// melody-split, auto-key). A clean slate to start a new idea.
+func (m *Model) reset() {
+	m.held = make(map[uint8]bool)
+	m.recentPCs = nil
+	m.recent = nil
+	m.core, m.melody = nil, nil
+	m.chord, m.chordOK = theory.Chord{}, false
+	m.prevChord, m.prevOK = theory.Chord{}, false
+	m.lastChord, m.lastOK = theory.Chord{}, false
+	m.conf = 0
+	m.pedal = false
 }
 
 // recompute derives the chord state from the held notes. It tracks the previous

@@ -35,7 +35,7 @@ func (m Model) View() string {
 	)
 	harmony := panelStyle.Width(68).Render(m.harmonyPanel())
 
-	footer := dimStyle.Render("q quit · a auto · m mode · r relative · e split · n notation · ←/→ tonic")
+	footer := dimStyle.Render("q quit · x reset · a auto · m mode · r relative · e split · n notation · ←/→ tonic")
 
 	return lipgloss.JoinVertical(lipgloss.Left,
 		m.header(), "",
