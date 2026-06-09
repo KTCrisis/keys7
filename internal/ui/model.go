@@ -33,6 +33,15 @@ type Model struct {
 	pedal       bool
 	recent      []midi.Event
 	closed      bool
+
+	// derived chord state, recomputed when the held notes change
+	core, melody    []uint8
+	chord           theory.Chord
+	chordOK         bool
+	prevChord       theory.Chord // the recognized chord before the current one
+	prevOK          bool
+	lastChord       theory.Chord // most recent recognized chord (persists through releases)
+	lastOK          bool
 }
 
 // detectWindow is how many recent note-ons feed key detection.
@@ -103,6 +112,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "e":
 			m.splitMelody = !m.splitMelody
+			m.recompute()
+		case "n":
+			theory.ToggleNotation() // display-only; chord state is unchanged
+		case "x":
+			m.reset() // forget everything played, keep settings
 		}
 	case eventMsg:
 		ev := midi.Event(msg)
@@ -139,4 +153,39 @@ func (m *Model) apply(ev midi.Event) {
 	if len(m.recent) > maxRecent {
 		m.recent = m.recent[len(m.recent)-maxRecent:]
 	}
+	m.recompute()
+}
+
+// reset forgets everything played — held notes, recent events, the key-detection
+// window and chord history — while keeping the user's settings (key, notation,
+// melody-split, auto-key). A clean slate to start a new idea.
+func (m *Model) reset() {
+	m.held = make(map[uint8]bool)
+	m.recentPCs = nil
+	m.recent = nil
+	m.core, m.melody = nil, nil
+	m.chord, m.chordOK = theory.Chord{}, false
+	m.prevChord, m.prevOK = theory.Chord{}, false
+	m.lastChord, m.lastOK = theory.Chord{}, false
+	m.conf = 0
+	m.pedal = false
+}
+
+// recompute derives the chord state from the held notes. It tracks the previous
+// recognized chord (persisting across key releases) so the view can confirm
+// when the chord just played fulfilled a suggestion from the one before it.
+func (m *Model) recompute() {
+	notes := sortedHeld(m.held)
+	core, melody := notes, []uint8(nil)
+	if m.splitMelody {
+		core, melody = theory.SplitMelody(notes, theory.DefaultMelodyGap)
+	}
+	chord, ok := theory.Identify(core)
+	if ok {
+		if m.lastOK && chord.String() != m.lastChord.String() {
+			m.prevChord, m.prevOK = m.lastChord, true
+		}
+		m.lastChord, m.lastOK = chord, true
+	}
+	m.core, m.melody, m.chord, m.chordOK = core, melody, chord, ok
 }

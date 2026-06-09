@@ -53,7 +53,10 @@ type Key struct {
 	Mode  Mode
 }
 
-func (k Key) String() string { return PitchClassName(k.Tonic) + " " + k.Mode.String() }
+func (k Key) String() string { return k.StringIn(active) }
+
+// StringIn renders the key name in a given notation, e.g. "C major" / "Do major".
+func (k Key) StringIn(n Notation) string { return PitchClassNameIn(k.Tonic, n) + " " + k.Mode.String() }
 
 var scaleSteps = map[Mode][7]uint8{
 	Major:         {0, 2, 4, 5, 7, 9, 11},

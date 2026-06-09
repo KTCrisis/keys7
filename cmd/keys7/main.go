@@ -18,7 +18,12 @@ func main() {
 	source := flag.String("source", "mock", "MIDI source: device|mock")
 	port := flag.String("port", "", `device port name match, e.g. "P-125" (device source only)`)
 	keyFlag := flag.String("key", "C", `key for cadence hints: "C", "Am", "F#m", or "auto" to infer it from playing`)
+	notationFlag := flag.String("notation", "letters", `note spelling: "letters" (C D E) or "solfege" (Do Ré Mi)`)
 	flag.Parse()
+
+	if strings.EqualFold(*notationFlag, "solfege") || strings.EqualFold(*notationFlag, "fr") {
+		theory.SetNotation(theory.Solfege)
+	}
 
 	var key theory.Key
 	autoKey := strings.EqualFold(*keyFlag, "auto")
