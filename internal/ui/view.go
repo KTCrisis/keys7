@@ -35,7 +35,7 @@ func (m Model) View() string {
 	)
 	harmony := panelStyle.Width(68).Render(m.harmonyPanel())
 
-	footer := dimStyle.Render("q quit · a auto · m mode · r relative · e split · ←/→ tonic")
+	footer := dimStyle.Render("q quit · a auto · m mode · r relative · e split · n notation · ←/→ tonic")
 
 	return lipgloss.JoinVertical(lipgloss.Left,
 		m.header(), "",
@@ -67,9 +67,10 @@ func (m Model) playingPanel(allNotes []uint8) string {
 	chordStr := dimStyle.Render("—")
 	switch {
 	case m.chordOK:
-		chordStr = chordBigStyle.Render(m.chord.String())
+		other := theory.ActiveNotation().Other()
+		chordStr = chordBigStyle.Render(m.chord.String()) + dimStyle.Render("  "+m.chord.StringIn(other))
 		if label, ok := m.fulfilledSuggestion(); ok {
-			chordStr += highlightStyle.Render(" ✓ " + label)
+			chordStr += highlightStyle.Render("  ✓ " + label)
 		}
 	case len(pcs) == 2:
 		chordStr = noteStyle.Render(theory.IntervalName((pcs[1]-pcs[0]+12)%12))
@@ -92,7 +93,9 @@ func (m Model) playingPanel(allNotes []uint8) string {
 func (m Model) keyPanel() string {
 	var b strings.Builder
 	b.WriteString(panelTitleStyle.Render("key") + "\n")
-	b.WriteString(chordBigStyle.Render(m.key.String()) + "\n")
+	other := theory.ActiveNotation().Other()
+	b.WriteString(chordBigStyle.Render(m.key.String()) +
+		dimStyle.Render("  "+theory.PitchClassNameIn(m.key.Tonic, other)) + "\n")
 	if m.autoKey {
 		b.WriteString(okStyle.Render(fmt.Sprintf("detected · %.0f%%", m.conf*100)) + "\n")
 	} else {
@@ -269,7 +272,7 @@ func sortedHeld(held map[uint8]bool) []uint8 {
 func noteNames(notes []uint8) []string {
 	names := make([]string, len(notes))
 	for i, n := range notes {
-		names[i] = midi.NoteName(n)
+		names[i] = theory.NoteName(n)
 	}
 	return names
 }
@@ -277,9 +280,9 @@ func noteNames(notes []uint8) []string {
 func formatEventShort(ev midi.Event) string {
 	switch {
 	case ev.Kind == midi.NoteOn && ev.Data2 > 0:
-		return fmt.Sprintf("%s↓%d", midi.NoteName(ev.Data1), ev.Data2)
+		return fmt.Sprintf("%s↓%d", theory.NoteName(ev.Data1), ev.Data2)
 	case ev.Kind == midi.NoteOff, ev.Kind == midi.NoteOn && ev.Data2 == 0:
-		return midi.NoteName(ev.Data1) + "↑"
+		return theory.NoteName(ev.Data1) + "↑"
 	case ev.IsPedal():
 		if ev.PedalDown() {
 			return "ped↓"

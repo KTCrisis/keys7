@@ -37,15 +37,6 @@ func TestMockSourceEmits(t *testing.T) {
 	}
 }
 
-func TestNoteName(t *testing.T) {
-	cases := map[uint8]string{60: "C4", 69: "A4", 61: "C#4", 48: "C3"}
-	for n, want := range cases {
-		if got := NoteName(n); got != want {
-			t.Errorf("NoteName(%d) = %q, want %q", n, got, want)
-		}
-	}
-}
-
 func TestUnknownSource(t *testing.T) {
 	if _, err := NewSource("bogus", ""); err == nil {
 		t.Fatal("expected error for unknown source kind")

@@ -113,6 +113,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "e":
 			m.splitMelody = !m.splitMelody
 			m.recompute()
+		case "n":
+			theory.ToggleNotation() // display-only; chord state is unchanged
 		}
 	case eventMsg:
 		ev := midi.Event(msg)

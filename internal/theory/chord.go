@@ -4,11 +4,6 @@ package theory
 
 import "sort"
 
-var pcNames = [12]string{"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"}
-
-// PitchClassName renders a pitch class (0-11) as a note name (sharp spelling).
-func PitchClassName(pc uint8) string { return pcNames[pc%12] }
-
 // Chord is an identified chord: a root pitch class, a quality suffix, and the
 // bass pitch class (which differs from the root for an inversion).
 type Chord struct {
@@ -18,12 +13,15 @@ type Chord struct {
 	Inverted bool   // bass != root
 }
 
-// String renders the chord symbol, e.g. "C", "Am7", "Cmaj9", or "C/E" for an
-// inversion (slash chord: chord over its bass note).
-func (c Chord) String() string {
-	s := PitchClassName(c.Root) + c.Suffix
+// String renders the chord symbol in the active notation, e.g. "Am7", "Cmaj9",
+// or "C/E" for an inversion (slash chord: chord over its bass note).
+func (c Chord) String() string { return c.StringIn(active) }
+
+// StringIn renders the chord symbol in a given notation.
+func (c Chord) StringIn(n Notation) string {
+	s := PitchClassNameIn(c.Root, n) + c.Suffix
 	if c.Inverted {
-		s += "/" + PitchClassName(c.Bass)
+		s += "/" + PitchClassNameIn(c.Bass, n)
 	}
 	return s
 }
