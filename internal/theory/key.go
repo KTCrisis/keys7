@@ -5,21 +5,46 @@ import (
 	"strings"
 )
 
-// Mode is a key's quality. Minor uses the harmonic minor as its cadential basis
-// (raised 7th), which is what yields a major V and a vii° leading-tone chord —
-// the machinery cadences actually rely on.
+// Mode is a key's quality. The three minor flavours differ by their 6th/7th
+// degrees, which changes the diatonic chords: natural minor matches the
+// relative-minor (white-key) palette, harmonic/melodic raise the 7th to give a
+// major V and a vii° leading tone for cadences.
 type Mode int
 
 const (
 	Major Mode = iota
-	Minor
+	NaturalMinor
+	HarmonicMinor
+	MelodicMinor
 )
 
 func (m Mode) String() string {
-	if m == Minor {
-		return "minor"
+	switch m {
+	case NaturalMinor:
+		return "natural minor"
+	case HarmonicMinor:
+		return "harmonic minor"
+	case MelodicMinor:
+		return "melodic minor"
+	default:
+		return "major"
 	}
-	return "major"
+}
+
+// IsMinor reports whether the mode is any minor flavour.
+func (m Mode) IsMinor() bool { return m != Major }
+
+// minorModes is the cycle order used by the UI's mode toggle.
+var minorModes = []Mode{Major, NaturalMinor, HarmonicMinor, MelodicMinor}
+
+// Next returns the next mode in the cycle major → natural → harmonic → melodic.
+func (m Mode) Next() Mode {
+	for i, mm := range minorModes {
+		if mm == m {
+			return minorModes[(i+1)%len(minorModes)]
+		}
+	}
+	return Major
 }
 
 // Key is a tonic pitch class plus a mode.
@@ -31,8 +56,10 @@ type Key struct {
 func (k Key) String() string { return PitchClassName(k.Tonic) + " " + k.Mode.String() }
 
 var scaleSteps = map[Mode][7]uint8{
-	Major: {0, 2, 4, 5, 7, 9, 11},
-	Minor: {0, 2, 3, 5, 7, 8, 11}, // harmonic minor
+	Major:         {0, 2, 4, 5, 7, 9, 11},
+	NaturalMinor:  {0, 2, 3, 5, 7, 8, 10},
+	HarmonicMinor: {0, 2, 3, 5, 7, 8, 11}, // raised 7th
+	MelodicMinor:  {0, 2, 3, 5, 7, 9, 11}, // raised 6th and 7th (ascending)
 }
 
 func (k Key) scalePCs() [7]uint8 {
@@ -65,9 +92,11 @@ func (f Function) String() string {
 }
 
 var functions = map[Mode][7]Function{
-	//        I/i  ii   iii  IV   V    vi   vii
-	Major: {Tonic, Subdominant, Tonic, Subdominant, Dominant, Tonic, Dominant},
-	Minor: {Tonic, Subdominant, Tonic, Subdominant, Dominant, Subdominant, Dominant},
+	//                I/i    ii     iii    IV     V      vi     vii
+	Major:         {Tonic, Subdominant, Tonic, Subdominant, Dominant, Tonic, Dominant},
+	NaturalMinor:  {Tonic, Subdominant, Tonic, Subdominant, Dominant, Subdominant, Dominant},
+	HarmonicMinor: {Tonic, Subdominant, Tonic, Subdominant, Dominant, Subdominant, Dominant},
+	MelodicMinor:  {Tonic, Subdominant, Tonic, Subdominant, Dominant, Subdominant, Dominant},
 }
 
 // DegreeChord is one diatonic chord: its scale degree, roman numeral, the chord
@@ -193,7 +222,7 @@ func ParseKey(s string) (Key, error) {
 	case "", "maj", "major":
 		return Key{Tonic: pc, Mode: Major}, nil
 	case "m", "min", "minor":
-		return Key{Tonic: pc, Mode: Minor}, nil
+		return Key{Tonic: pc, Mode: NaturalMinor}, nil
 	default:
 		return Key{}, fmt.Errorf("bad key %q: quality should be major/minor", s)
 	}

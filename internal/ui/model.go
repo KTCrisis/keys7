@@ -75,9 +75,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "left":
 			m.key.Tonic = (m.key.Tonic + 11) % 12
 		case "m":
+			// cycle major → natural → harmonic → melodic minor
+			m.key.Mode = m.key.Mode.Next()
+		case "r":
+			// jump to the relative key (same notes, move the tonic):
+			// major → its relative natural minor, any minor → relative major.
 			if m.key.Mode == theory.Major {
-				m.key.Mode = theory.Minor
+				m.key.Tonic = (m.key.Tonic + 9) % 12
+				m.key.Mode = theory.NaturalMinor
 			} else {
+				m.key.Tonic = (m.key.Tonic + 3) % 12
 				m.key.Mode = theory.Major
 			}
 		case "e":
