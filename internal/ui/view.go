@@ -100,7 +100,13 @@ func (m Model) renderTheory(chord theory.Chord, chordOK bool) string {
 	var b strings.Builder
 
 	b.WriteString(labelStyle.Render("key   ") + chordStyle.Render(m.key.String()))
-	b.WriteString(dimStyle.Render("   ←/→ tonic · m mode · r relative · e melody-split") + "\n")
+	if m.autoKey {
+		b.WriteString(okStyle.Render(fmt.Sprintf("   auto %.0f%%", m.conf*100)))
+	}
+	b.WriteString("\n")
+
+	b.WriteString(labelStyle.Render("modes ") + onOff("auto-key", m.autoKey) + "  " + onOff("melody-split", m.splitMelody))
+	b.WriteString(dimStyle.Render("   ←/→ tonic · m mode · r relative · a auto · e split") + "\n")
 
 	curDeg := 0
 	if chordOK {
@@ -135,6 +141,14 @@ func (m Model) renderTheory(chord theory.Chord, chordOK bool) string {
 		}
 	}
 	return b.String()
+}
+
+// onOff renders a toggle's label with its state, green when on, dim when off.
+func onOff(label string, on bool) string {
+	if on {
+		return okStyle.Render(label + " ON")
+	}
+	return dimStyle.Render(label + " off")
 }
 
 // distinctPCs returns the unique pitch classes of the notes, ascending.

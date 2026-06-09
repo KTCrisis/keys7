@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -16,13 +17,17 @@ import (
 func main() {
 	source := flag.String("source", "mock", "MIDI source: device|mock")
 	port := flag.String("port", "", `device port name match, e.g. "P-125" (device source only)`)
-	keyFlag := flag.String("key", "C", `fixed key for cadence hints, e.g. "C", "Am", "F#m" (change live with ←/→ and m)`)
+	keyFlag := flag.String("key", "C", `key for cadence hints: "C", "Am", "F#m", or "auto" to infer it from playing`)
 	flag.Parse()
 
-	key, err := theory.ParseKey(*keyFlag)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "keys7:", err)
-		os.Exit(1)
+	var key theory.Key
+	autoKey := strings.EqualFold(*keyFlag, "auto")
+	if !autoKey {
+		var err error
+		if key, err = theory.ParseKey(*keyFlag); err != nil {
+			fmt.Fprintln(os.Stderr, "keys7:", err)
+			os.Exit(1)
+		}
 	}
 
 	src, err := midi.NewSource(*source, *port)
@@ -32,7 +37,7 @@ func main() {
 	}
 	defer src.Close()
 
-	m := ui.New(*source, *port, key, src.Events(), mesh.NopForwarder{})
+	m := ui.New(*source, *port, key, autoKey, src.Events(), mesh.NopForwarder{})
 	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "keys7:", err)
 		os.Exit(1)
