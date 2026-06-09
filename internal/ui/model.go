@@ -5,6 +5,7 @@ import (
 
 	"keys7/internal/mesh"
 	"keys7/internal/midi"
+	"keys7/internal/theory"
 )
 
 // eventMsg carries a MIDI event into the Bubble Tea update loop.
@@ -23,6 +24,7 @@ type Model struct {
 	events     <-chan midi.Event
 	fwd        mesh.Forwarder
 
+	key    theory.Key
 	held   map[uint8]bool
 	pedal  bool
 	recent []midi.Event
@@ -30,11 +32,12 @@ type Model struct {
 }
 
 // New builds the model. `events` is the source's channel; `fwd` is the mesh
-// seam (a NopForwarder in phase 1).
-func New(sourceKind, port string, events <-chan midi.Event, fwd mesh.Forwarder) Model {
+// seam (a NopForwarder for now); `key` is the fixed key for cadence hints.
+func New(sourceKind, port string, key theory.Key, events <-chan midi.Event, fwd mesh.Forwarder) Model {
 	return Model{
 		sourceKind: sourceKind,
 		port:       port,
+		key:        key,
 		events:     events,
 		fwd:        fwd,
 		held:       make(map[uint8]bool),
@@ -65,6 +68,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c", "esc":
 			return m, tea.Quit
+		case "right":
+			m.key.Tonic = (m.key.Tonic + 1) % 12
+		case "left":
+			m.key.Tonic = (m.key.Tonic + 11) % 12
+		case "m":
+			if m.key.Mode == theory.Major {
+				m.key.Mode = theory.Minor
+			} else {
+				m.key.Mode = theory.Major
+			}
 		}
 	case eventMsg:
 		ev := midi.Event(msg)

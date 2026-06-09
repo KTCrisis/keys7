@@ -39,6 +39,7 @@ func (m Model) View() string {
 	b.WriteString(labelStyle.Render("status ") + status + "\n\n")
 
 	notes := sortedHeld(m.held)
+	chord, chordOK := theory.Identify(notes)
 
 	b.WriteString(labelStyle.Render("held  "))
 	if len(notes) == 0 {
@@ -49,8 +50,8 @@ func (m Model) View() string {
 	b.WriteString("\n")
 
 	b.WriteString(labelStyle.Render("chord "))
-	if c, ok := theory.Identify(notes); ok {
-		b.WriteString(chordStyle.Render(c.String()))
+	if chordOK {
+		b.WriteString(chordStyle.Render(chord.String()))
 	} else {
 		b.WriteString(dimStyle.Render("—"))
 	}
@@ -62,12 +63,58 @@ func (m Model) View() string {
 	}
 	b.WriteString(labelStyle.Render("pedal ") + pedal + "\n\n")
 
+	b.WriteString(m.renderTheory(chord, chordOK))
+	b.WriteString("\n")
+
 	b.WriteString(labelStyle.Render("recent") + "\n")
 	for i := len(m.recent) - 1; i >= 0; i-- {
 		b.WriteString("  " + formatEvent(m.recent[i]) + "\n")
 	}
 
 	b.WriteString("\n" + dimStyle.Render("q quit"))
+	return b.String()
+}
+
+// renderTheory shows the fixed key, the diatonic palette (current degree
+// highlighted), and the suggested next chords for the chord being played.
+func (m Model) renderTheory(chord theory.Chord, chordOK bool) string {
+	var b strings.Builder
+
+	b.WriteString(labelStyle.Render("key   ") + chordStyle.Render(m.key.String()))
+	b.WriteString(dimStyle.Render("   ←/→ tonic · m mode") + "\n")
+
+	curDeg := 0
+	if chordOK {
+		if dc, ok := theory.DegreeOf(m.key, chord); ok {
+			curDeg = dc.Degree
+		}
+	}
+	tri := theory.DiatonicTriads(m.key)
+	parts := make([]string, len(tri))
+	for i, dc := range tri {
+		if dc.Degree == curDeg {
+			parts[i] = chordStyle.Render(dc.Roman)
+		} else {
+			parts[i] = noteStyle.Render(dc.Roman)
+		}
+	}
+	b.WriteString(labelStyle.Render("in key ") + strings.Join(parts, "  ") + "\n")
+
+	b.WriteString(labelStyle.Render("next  "))
+	switch {
+	case !chordOK:
+		b.WriteString(dimStyle.Render("— play a chord"))
+	default:
+		if ss, ok := theory.Suggest(m.key, chord); ok && len(ss) > 0 {
+			sg := make([]string, len(ss))
+			for i, s := range ss {
+				sg[i] = chordStyle.Render(s.Chord.Chord.String()) + dimStyle.Render(" "+s.Label)
+			}
+			b.WriteString(strings.Join(sg, dimStyle.Render("  ·  ")))
+		} else {
+			b.WriteString(dimStyle.Render("— out of key"))
+		}
+	}
 	return b.String()
 }
 
