@@ -100,7 +100,7 @@ func (m Model) renderTheory(chord theory.Chord, chordOK bool) string {
 	var b strings.Builder
 
 	b.WriteString(labelStyle.Render("key   ") + chordStyle.Render(m.key.String()))
-	b.WriteString(dimStyle.Render("   ←/→ tonic · m mode · e melody-split") + "\n")
+	b.WriteString(dimStyle.Render("   ←/→ tonic · m mode · r relative · e melody-split") + "\n")
 
 	curDeg := 0
 	if chordOK {
