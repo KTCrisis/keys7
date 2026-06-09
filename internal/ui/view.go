@@ -35,7 +35,7 @@ func (m Model) View() string {
 	)
 	harmony := panelStyle.Width(68).Render(m.harmonyPanel())
 
-	footer := dimStyle.Render("q quit · x reset · a auto · m mode · r relative · e split · n notation · ←/→ tonic")
+	footer := dimStyle.Render("q quit · x reset · a auto · d drone · m mode · r relative · e split · n notation · ←/→ tonic")
 
 	return lipgloss.JoinVertical(lipgloss.Left,
 		m.header(), "",
@@ -96,12 +96,15 @@ func (m Model) keyPanel() string {
 	other := theory.ActiveNotation().Other()
 	b.WriteString(chordBigStyle.Render(m.key.String()) +
 		dimStyle.Render("  "+theory.PitchClassNameIn(m.key.Tonic, other)) + "\n")
-	if m.autoKey {
-		b.WriteString(okStyle.Render(fmt.Sprintf("detected · %.0f%%", m.conf*100)) + "\n")
-	} else {
+	switch m.keySrc {
+	case KeyAuto:
+		b.WriteString(okStyle.Render(fmt.Sprintf("auto · %.0f%%", m.conf*100)) + "\n")
+	case KeyDrone:
+		b.WriteString(okStyle.Render("drone · bass-pinned") + "\n")
+	default:
 		b.WriteString(dimStyle.Render("manual") + "\n")
 	}
-	b.WriteString(onOff("auto", m.autoKey) + "  " + onOff("split", m.splitMelody))
+	b.WriteString(onOff("auto", m.keySrc == KeyAuto) + " " + onOff("drone", m.keySrc == KeyDrone) + " " + onOff("split", m.splitMelody))
 	return b.String()
 }
 
