@@ -88,7 +88,9 @@ log on a path both sides can see (e.g. under `/mnt/c/…` from WSL).
   device mode runs on the Windows host. WSL is the dev/mock environment.
 - Single USB-MIDI port, exclusive on Windows: run keys7 with the DAW closed, or
   share via a virtual MIDI splitter (loopMIDI) — a later concern.
-- The device path is **validated on the P-125**; the mock path is the dev one.
+- **Any MIDI input works** — nothing is P-125-specific (WinMM opens any
+  class-compliant device; `--port` matches by name, else the first input is
+  used). The P-125 is just the device it was developed and validated on.
 
 ## Roadmap (v2)
 
