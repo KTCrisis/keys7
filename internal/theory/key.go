@@ -144,19 +144,28 @@ func DegreeOf(k Key, c Chord) (DegreeChord, bool) {
 }
 
 // triadBase reduces a chord suffix to its underlying triad quality, or "" if it
-// has no plain triad (suspended chords).
+// has no plain triad (suspended chords). Prefix-based so extended chords map to
+// their core: maj9→maj, m11→min, G13→maj, etc. Order matters (check "maj" and
+// "m7b5" before the bare "m").
 func triadBase(suffix string) string {
-	switch suffix {
-	case "", "6", "7", "maj7":
+	switch {
+	case strings.HasPrefix(suffix, "maj"):
 		return "maj"
-	case "m", "m6", "m7":
-		return "min"
-	case "dim", "dim7", "m7b5":
+	case strings.HasPrefix(suffix, "m7b5"):
 		return "dim"
-	case "aug":
+	case strings.HasPrefix(suffix, "mMaj"):
+		return "min"
+	case strings.HasPrefix(suffix, "dim"):
+		return "dim"
+	case strings.HasPrefix(suffix, "aug"):
 		return "aug"
+	case strings.HasPrefix(suffix, "m"):
+		return "min"
+	case strings.HasPrefix(suffix, "sus"):
+		return ""
+	default:
+		return "maj" // "", 6, 7, 9, 11, 13, add9, 6/9
 	}
-	return "" // sus2, sus4
 }
 
 var letterPC = map[byte]uint8{'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11}
