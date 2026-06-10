@@ -43,6 +43,7 @@ type Model struct {
 	cuedAt      time.Time // last completed cue, for the header badge
 	replyPath   string    // assistant reply file (--reply); empty = no panel
 	reply       string    // last content read from it
+	texture     Texture   // declared playing texture (cycled with `t`)
 
 	// derived chord state, recomputed when the held notes change
 	core, melody    []uint8
@@ -56,6 +57,31 @@ type Model struct {
 
 // detectWindow is how many recent note-ons feed key detection.
 const detectWindow = 32
+
+// Texture is the player's declared playing mode — intent as a fact in the
+// journal, a strong prior for the reader's melody/harmony segmentation
+// (real-time inference can't tell an arpeggio from a line; the player can).
+type Texture int
+
+const (
+	TextureFree     Texture = iota // default: the reader infers
+	TextureBlock                   // chords are plaqués
+	TextureArpeggio                // chords are broken/arpeggiated
+)
+
+func (t Texture) String() string {
+	switch t {
+	case TextureBlock:
+		return "block"
+	case TextureArpeggio:
+		return "arpeggio"
+	default:
+		return "free"
+	}
+}
+
+// Next cycles free → block → arpeggio.
+func (t Texture) Next() Texture { return (t + 1) % 3 }
 
 // KeySource is how the active key is chosen.
 type KeySource int
@@ -148,6 +174,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.recompute()
 		case "n":
 			theory.ToggleNotation() // display-only; chord state is unchanged
+		case "t":
+			m.texture = m.texture.Next()
+			if m.sink != nil {
+				m.sink.Emit(session.HarmonicEvent{
+					Time: session.Stamp(time.Now()),
+					Kind: "texture",
+					Mode: m.texture.String(),
+				})
+			}
 		case "x":
 			m.reset() // forget everything played, keep settings
 		}
@@ -168,6 +203,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // apply folds one event into the view state.
 func (m *Model) apply(ev midi.Event) {
+	m.logRaw(ev)
 	switch {
 	case ev.Kind == midi.NoteOn && ev.Data2 > 0:
 		if ev.Data1 == cueNote && m.cue.Tap(ev.Timestamp) {
@@ -213,6 +249,36 @@ func (m *Model) apply(ev midi.Event) {
 	m.recompute()
 	m.logMelodyOnset(ev, wasChord, prevBottom)
 	m.logKeyIfChanged()
+}
+
+// logRaw journals the faithful capture layer: every note attack/release and
+// pedal move, milliseconds and velocity included. This is what a reader
+// segments with hindsight — arpeggio vs line is undecidable in real time but
+// easy once releases and accumulation are visible. Cue-note taps stay out:
+// they are signalling, not music.
+func (m *Model) logRaw(ev midi.Event) {
+	if m.sink == nil || (ev.Data1 == cueNote && ev.Kind != midi.ControlChange) {
+		return
+	}
+	switch {
+	case ev.Kind == midi.NoteOn && ev.Data2 > 0:
+		m.sink.Emit(session.HarmonicEvent{
+			Time: session.Stamp(ev.Timestamp), Kind: "note",
+			Note: theory.NoteNameIn(ev.Data1, theory.Letters), Midi: ev.Data1,
+			Vel: ev.Data2, On: session.Bool(true),
+		})
+	case ev.Kind == midi.NoteOff, ev.Kind == midi.NoteOn && ev.Data2 == 0:
+		m.sink.Emit(session.HarmonicEvent{
+			Time: session.Stamp(ev.Timestamp), Kind: "note",
+			Note: theory.NoteNameIn(ev.Data1, theory.Letters), Midi: ev.Data1,
+			On: session.Bool(false),
+		})
+	case ev.IsPedal():
+		m.sink.Emit(session.HarmonicEvent{
+			Time: session.Stamp(ev.Timestamp), Kind: "pedal",
+			On: session.Bool(ev.PedalDown()),
+		})
+	}
 }
 
 // logMelodyOnset emits a melody event when the note just struck is melodic —

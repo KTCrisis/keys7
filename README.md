@@ -77,12 +77,19 @@ keys7.exe --source=device --key auto --log "C:\…\session.jsonl"
 ←/→  shift the tonic         m  cycle major / natural / harmonic / melodic minor
 r    relative key            a  auto key-detection      d  drone (bass-pinned)
 e    melody/harmony split    n  notation (letters↔solfège)
+t    texture (free/block/arpeggio — declared intent, journaled)
 x    reset (forget playing)  q  quit
 ```
 
 ## The AI bridge
 
-With `--log`, keys7 appends one JSON object per event: a `chord` (letters +
+With `--log`, keys7 appends one JSON object per event, in two layers. The
+**faithful capture**: every `note` attack/release (name, number, velocity) and
+`pedal` move, millisecond-stamped — the raw material a reader segments with
+hindsight, where arpeggio-vs-line is easy (it is undecidable in real time).
+A `texture` event records the player's declared mode (`t` key: free / block /
+arpeggio) — intent as a fact, a strong prior for that segmentation. And the
+**live interpretation**: a `chord` (letters +
 solfège, with its diatonic degree, or the secondary dominant it is if
 chromatic), a `key` change (with detection confidence), a `melody` onset (note
 name, number, velocity, and a register: `"reg":"high"` for a line over the

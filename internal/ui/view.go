@@ -35,7 +35,7 @@ func (m Model) View() string {
 	)
 	harmony := panelStyle.Width(68).Render(m.harmonyPanel())
 
-	footer := dimStyle.Render("q quit · x reset · a auto · d drone · m mode · r relative · e split · n notation · ←/→ tonic")
+	footer := dimStyle.Render("q quit · x reset · a auto · d drone · m mode · r relative · e split · n notation · t texture · ←/→ tonic")
 
 	parts := []string{m.header(), "", top, "", harmony, ""}
 	if m.replyPath != "" {
@@ -66,6 +66,9 @@ func (m Model) header() string {
 	}
 	line := titleStyle.Render("keys7") + dimStyle.Render("  ·  live harmony") +
 		"      " + labelStyle.Render(src) + dimStyle.Render(" · ") + status
+	if m.texture != TextureFree {
+		line += dimStyle.Render(" · ") + warnStyle.Render(m.texture.String())
+	}
 	if !m.cuedAt.IsZero() {
 		line += dimStyle.Render(" · ") + highlightStyle.Render("cue ✓ "+m.cuedAt.Format("15:04:05"))
 	}
