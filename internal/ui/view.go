@@ -55,8 +55,12 @@ func (m Model) header() string {
 	if m.port != "" {
 		src += " " + m.port
 	}
-	return titleStyle.Render("keys7") + dimStyle.Render("  ·  live harmony") +
+	line := titleStyle.Render("keys7") + dimStyle.Render("  ·  live harmony") +
 		"      " + labelStyle.Render(src) + dimStyle.Render(" · ") + status
+	if !m.cuedAt.IsZero() {
+		line += dimStyle.Render(" · ") + highlightStyle.Render("cue ✓ "+m.cuedAt.Format("15:04:05"))
+	}
+	return line
 }
 
 func (m Model) playingPanel(allNotes []uint8) string {
