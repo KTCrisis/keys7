@@ -142,6 +142,52 @@ channel 1, velocity 80. `--out=mock` prints the messages instead of playing
 (the WSL audition mode); Ctrl-C sends All Notes Off before exiting so the
 piano never rings on.
 
+## Running a live session with an assistant
+
+The bridge above is just files; what makes it a *conversation* is the loop on
+the assistant's side. The reference setup (Claude Code, but any agent CLI with
+background commands and command allowlists fits) has three pieces:
+
+**1. Scripts, not inline shell** (`scripts/`):
+
+- `watch-cue.sh <journal>` — polls the journal (2 s) until a `cue` lands, then
+  prints every line added since it started and exits. Polling, not inotify:
+  change notifications don't cross the WSL/Windows 9P mount; reads do.
+- `play.sh '<sequence-json>' [port]` — plays a sequence via play7.
+- `reply.sh <file> '<text>'` — writes the TUI reply panel file.
+
+All three take **arguments instead of stdin/pipes**, deliberately: command
+allowlists match on prefixes, and a pipe in the command line defeats them.
+
+**2. An allowlist** so the loop runs without permission prompts — e.g. in
+Claude Code's `settings.json`:
+
+```json
+{"permissions": {"allow": [
+  "Bash(/path/to/keys7/scripts/watch-cue.sh *)",
+  "Bash(/path/to/keys7/scripts/play.sh *)",
+  "Bash(/path/to/keys7/scripts/reply.sh *)"
+]}}
+```
+
+**3. A skill / standing instruction** encoding the protocol, so a session
+starts from one phrase. The loop it describes:
+
+1. Arm `watch-cue.sh` as a background command — **alone, never chained
+   behind play/reply with `&&` or `&`** (an orphaned watcher reports to a
+   finished task and never wakes anyone). One watcher at a time.
+2. On wake: read the take, segment melody/harmony **from the raw `note` layer
+   with hindsight** (chords cluster within ~30 ms; arpeggios accumulate under
+   the pedal; melodies replace each other; `texture` events are the player's
+   declared intent). The real-time `chord`/`melody` hints are corroboration,
+   not truth.
+3. Answer on both channels — `reply.sh` for the TUI panel, `play.sh` with
+   voices (melody ~80-90 velocity over chords ~50-60) — then re-arm the
+   watcher and yield.
+
+The player's side of the protocol: play freely (pedal included), `t` to
+declare texture, double-tap A0 to hand the turn over.
+
 ## Cross-platform notes
 
 - The P-125 is USB-MIDI **on Windows**; WSL doesn't see USB-MIDI natively, so
