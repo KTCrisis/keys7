@@ -6,22 +6,24 @@ import (
 	"keys7/internal/midi"
 )
 
-// Play sends the sequence to out, blocking until done. Steps are legato: all
-// notes of a step sound for its full duration, then stop as the next begins.
-// sleep is injected so tests can assert the schedule without waiting through
-// it (pass time.Sleep for real playback).
+// Play sends the compiled events to out, blocking until done. sleep is
+// injected so tests can assert the schedule without waiting through it (pass
+// time.Sleep for real playback).
 func Play(out midi.MidiOut, seq Sequence, sleep func(time.Duration)) error {
-	for _, st := range seq.Steps {
-		for _, n := range st.Notes {
-			if err := out.NoteOn(seq.Channel, n, st.Velocity); err != nil {
-				return err
-			}
+	var now time.Duration
+	for _, ev := range seq.Events {
+		if ev.At > now {
+			sleep(ev.At - now)
+			now = ev.At
 		}
-		sleep(seq.Duration(st))
-		for _, n := range st.Notes {
-			if err := out.NoteOff(seq.Channel, n); err != nil {
-				return err
-			}
+		var err error
+		if ev.On {
+			err = out.NoteOn(seq.Channel, ev.Note, ev.Vel)
+		} else {
+			err = out.NoteOff(seq.Channel, ev.Note)
+		}
+		if err != nil {
+			return err
 		}
 	}
 	return nil

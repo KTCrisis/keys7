@@ -114,12 +114,23 @@ play7.exe --port "P-125" sequence.json
 echo '{"steps":[{"notes":["C4","E4","G4"],"beats":2}]}' | play7.exe
 ```
 
-A sequence is `{tempo, channel, velocity, steps:[{notes, beats, velocity}]}` —
-notes in scientific pitch ("A3", "F#4", chords as arrays, no notes = rest),
-beats at the sequence tempo, step velocity overriding the sequence's. Defaults:
-90 BPM, channel 1, velocity 80. `--out=mock` prints the messages instead of
-playing (the WSL audition mode); Ctrl-C sends All Notes Off before exiting so
-the piano never rings on.
+A sequence is one or more **voices**, each with its own steps and velocity,
+all starting together — a melody can move, louder, over a chord the other
+voice holds:
+
+```json
+{"tempo": 65, "voices": [
+  {"velocity": 90, "steps": [{"notes": ["D5"], "beats": 1}, {"notes": ["F5"], "beats": 2}]},
+  {"velocity": 58, "steps": [{"notes": ["Bb2", "D3", "F3", "A3"], "beats": 3}]}
+]}
+```
+
+Notes are scientific pitch ("A3", "F#4"), chords are arrays, no notes = rest;
+beats run at the sequence tempo; velocity resolves step > voice > sequence.
+A top-level `steps` array is shorthand for a single voice. Defaults: 90 BPM,
+channel 1, velocity 80. `--out=mock` prints the messages instead of playing
+(the WSL audition mode); Ctrl-C sends All Notes Off before exiting so the
+piano never rings on.
 
 ## Cross-platform notes
 

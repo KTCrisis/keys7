@@ -1,12 +1,17 @@
 // Package sequence parses and plays note/chord sequences for play7. Like
 // theory, it is a pure layer: parsing knows nothing about MIDI transport, and
 // playback only sees the MidiOut interface.
+//
+// A sequence is one or more voices, each a list of steps advancing on its own
+// clock — a melody can move, louder, over a chord the other voice holds. The
+// voices compile into a single sorted stream of timed note events.
 package sequence
 
 import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"time"
 
 	"keys7/internal/theory"
@@ -20,43 +25,46 @@ const (
 	defaultBeats    = 1.0
 )
 
-// Sequence is a validated sequence ready to play. Channel is the wire channel
-// (0-15); velocities are already resolved per step.
+// Sequence is a compiled, validated sequence: timed events ready to play.
 type Sequence struct {
 	Tempo   float64
-	Channel uint8
-	Steps   []Step
+	Channel uint8 // wire channel (0-15)
+	Events  []Event
 }
 
-// Step is one playable unit: a note (one entry), a chord (several), or a rest
-// (none), held for Beats at the sequence tempo.
-type Step struct {
-	Notes    []uint8
-	Beats    float64
-	Velocity uint8
+// Event is one scheduled MIDI action. Events are sorted by At; at the same
+// instant, note-offs come before note-ons so a re-struck note retriggers
+// cleanly instead of being killed by its own off.
+type Event struct {
+	At   time.Duration
+	On   bool
+	Note uint8
+	Vel  uint8 // note-ons only
 }
 
-// Duration converts a step's beats to wall time at the sequence tempo.
-func (s Sequence) Duration(st Step) time.Duration {
-	return time.Duration(st.Beats * 60 / s.Tempo * float64(time.Second))
-}
-
-// fileSeq / fileStep mirror the JSON document:
+// fileSeq / fileStep / fileVoice mirror the JSON document:
 //
 //	{
-//	  "tempo": 90, "channel": 1, "velocity": 80,
-//	  "steps": [
-//	    {"notes": ["A3", "C4", "E4"], "beats": 2},
-//	    {"notes": ["G3"], "beats": 0.5, "velocity": 100},
-//	    {"beats": 1}
+//	  "tempo": 65, "channel": 1, "velocity": 80,
+//	  "voices": [
+//	    {"velocity": 90, "steps": [{"notes": ["D5"], "beats": 1}, {"notes": ["F5"], "beats": 2}]},
+//	    {"velocity": 58, "steps": [{"notes": ["Bb2", "D3", "F3", "A3"], "beats": 3}]}
 //	  ]
 //	}
 //
-// Notes use scientific pitch notation (C4 = middle C = MIDI 60); a step with
-// no notes is a rest. Channel is 1-16 as on the instrument's panel.
+// Voices start together and each advances by its own beats — that is what lets
+// a line move while a chord holds. A top-level "steps" array is shorthand for
+// a single voice. Notes use scientific pitch (C4 = middle C); a step with no
+// notes is a rest. Velocity resolves step > voice > sequence.
 type fileSeq struct {
-	Tempo    float64    `json:"tempo"`
-	Channel  uint8      `json:"channel"`
+	Tempo    float64     `json:"tempo"`
+	Channel  uint8       `json:"channel"`
+	Velocity uint8       `json:"velocity"`
+	Steps    []fileStep  `json:"steps"`
+	Voices   []fileVoice `json:"voices"`
+}
+
+type fileVoice struct {
 	Velocity uint8      `json:"velocity"`
 	Steps    []fileStep `json:"steps"`
 }
@@ -67,7 +75,7 @@ type fileStep struct {
 	Velocity uint8    `json:"velocity"`
 }
 
-// Parse reads, validates and resolves a JSON sequence.
+// Parse reads, validates and compiles a JSON sequence into timed events.
 func Parse(r io.Reader) (Sequence, error) {
 	dec := json.NewDecoder(r)
 	dec.DisallowUnknownFields()
@@ -94,33 +102,71 @@ func Parse(r io.Reader) (Sequence, error) {
 	if f.Velocity > 127 {
 		return Sequence{}, fmt.Errorf("bad velocity %d: must be 1-127", f.Velocity)
 	}
-	if len(f.Steps) == 0 {
-		return Sequence{}, fmt.Errorf("empty sequence: no steps")
+
+	if len(f.Steps) > 0 && len(f.Voices) > 0 {
+		return Sequence{}, fmt.Errorf("use either steps or voices, not both")
+	}
+	voices := f.Voices
+	if len(f.Steps) > 0 {
+		voices = []fileVoice{{Steps: f.Steps}}
+	}
+	if len(voices) == 0 {
+		return Sequence{}, fmt.Errorf("empty sequence: no steps or voices")
 	}
 
-	seq := Sequence{Tempo: f.Tempo, Channel: f.Channel - 1, Steps: make([]Step, 0, len(f.Steps))}
-	for i, fs := range f.Steps {
-		st := Step{Beats: fs.Beats, Velocity: fs.Velocity}
-		if st.Beats == 0 {
-			st.Beats = defaultBeats
+	seq := Sequence{Tempo: f.Tempo, Channel: f.Channel - 1}
+	for vi, v := range voices {
+		if v.Velocity == 0 {
+			v.Velocity = f.Velocity
 		}
-		if st.Beats < 0 {
-			return Sequence{}, fmt.Errorf("step %d: bad beats %v: must be positive", i+1, fs.Beats)
+		if v.Velocity > 127 {
+			return Sequence{}, fmt.Errorf("voice %d: bad velocity %d: must be 1-127", vi+1, v.Velocity)
 		}
-		if st.Velocity == 0 {
-			st.Velocity = f.Velocity
+		if len(v.Steps) == 0 {
+			return Sequence{}, fmt.Errorf("voice %d: no steps", vi+1)
 		}
-		if st.Velocity > 127 {
-			return Sequence{}, fmt.Errorf("step %d: bad velocity %d: must be 1-127", i+1, fs.Velocity)
-		}
-		for _, name := range fs.Notes {
-			n, err := theory.ParseNote(name)
-			if err != nil {
-				return Sequence{}, fmt.Errorf("step %d: %w", i+1, err)
+		cursor := 0.0 // beats since the start; all voices share t=0
+		for si, fs := range v.Steps {
+			beats, vel := fs.Beats, fs.Velocity
+			if beats == 0 {
+				beats = defaultBeats
 			}
-			st.Notes = append(st.Notes, n)
+			if beats < 0 {
+				return Sequence{}, fmt.Errorf("voice %d step %d: bad beats %v: must be positive", vi+1, si+1, fs.Beats)
+			}
+			if vel == 0 {
+				vel = v.Velocity
+			}
+			if vel > 127 {
+				return Sequence{}, fmt.Errorf("voice %d step %d: bad velocity %d: must be 1-127", vi+1, si+1, fs.Velocity)
+			}
+			on, off := beatsToTime(cursor, f.Tempo), beatsToTime(cursor+beats, f.Tempo)
+			for _, name := range fs.Notes {
+				n, err := theory.ParseNote(name)
+				if err != nil {
+					return Sequence{}, fmt.Errorf("voice %d step %d: %w", vi+1, si+1, err)
+				}
+				seq.Events = append(seq.Events,
+					Event{At: on, On: true, Note: n, Vel: vel},
+					Event{At: off, On: false, Note: n},
+				)
+			}
+			cursor += beats
 		}
-		seq.Steps = append(seq.Steps, st)
 	}
+
+	sort.SliceStable(seq.Events, func(i, j int) bool {
+		a, b := seq.Events[i], seq.Events[j]
+		if a.At != b.At {
+			return a.At < b.At
+		}
+		return !a.On && b.On // same instant: offs first
+	})
 	return seq, nil
+}
+
+// beatsToTime converts a beat position to wall time at a tempo. Positions stay
+// in beats until this conversion so long sequences don't accumulate drift.
+func beatsToTime(beats, tempo float64) time.Duration {
+	return time.Duration(beats * 60 / tempo * float64(time.Second))
 }
