@@ -81,8 +81,12 @@ x    reset (forget playing)  q  quit
 
 With `--log`, keys7 appends one JSON object per event: a `chord` (letters +
 solfège, with its diatonic degree, or the secondary dominant it is if
-chromatic), a `key` change (with detection confidence), a `reset` marker, or a
-`cue`. An assistant reads the file to know what's being played and suggest over
+chromatic), a `key` change (with detection confidence), a `melody` onset (note
+name, number, velocity — every note the melody/harmony split peels off the
+top), a `reset` marker, or a `cue`. Timestamps carry milliseconds, so a reader
+can reconstruct the melodic rhythm from inter-onset gaps. The split only
+classifies melody over a held chord (≥ 3 remaining notes) — keep the left hand
+down for the line to be journaled; pedal-aware segmentation will lift this. An assistant reads the file to know what's being played and suggest over
 it — the concrete realisation of the otherwise-dormant mesh `Forwarder` seam.
 Put the log on a path both sides can see (e.g. under `/mnt/c/…` from WSL).
 

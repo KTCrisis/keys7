@@ -9,20 +9,28 @@ import (
 	"encoding/json"
 	"io"
 	"sync"
+	"time"
 )
 
-// HarmonicEvent is one thing keys7 heard: a chord, or a key change.
+// HarmonicEvent is one thing keys7 heard: a chord, a key change, or a melody
+// note (an onset the melody/harmony split classified as melody).
 type HarmonicEvent struct {
 	Time    string  `json:"t"`
-	Kind    string  `json:"kind"`              // "chord" | "key"
+	Kind    string  `json:"kind"`              // "chord" | "key" | "melody" | "reset" | "cue"
 	Chord   string  `json:"chord,omitempty"`   // letters, e.g. "Cmaj7"
 	Solfege string  `json:"solfege,omitempty"` // e.g. "Domaj7"
 	Key     string  `json:"key,omitempty"`     // active key when heard
 	Roman   string  `json:"roman,omitempty"`   // diatonic degree, if any
 	Degree  int     `json:"deg,omitempty"`
 	Conf    float64 `json:"conf,omitempty"` // key-detection confidence
-	Note    string  `json:"note,omitempty"` // e.g. "secondary dominant V/ii", "non-diatonic"
+	Note    string  `json:"note,omitempty"` // chord annotation, or the melody note name ("A4")
+	Midi    uint8   `json:"midi,omitempty"` // melody note number
+	Vel     uint8   `json:"v,omitempty"`    // melody onset velocity
 }
+
+// Stamp formats an event time: RFC3339 with milliseconds, so melody rhythm can
+// be reconstructed from inter-onset gaps (whole seconds are too coarse).
+func Stamp(t time.Time) string { return t.UTC().Format("2006-01-02T15:04:05.000Z07:00") }
 
 // Sink consumes harmonic events. Implementations must be safe for use from the
 // model's single goroutine; JSONLSink guards writes anyway.

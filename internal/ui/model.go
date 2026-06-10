@@ -161,7 +161,7 @@ func (m *Model) apply(ev midi.Event) {
 		if ev.Data1 == cueNote && m.cue.Tap(ev.Timestamp) {
 			m.cuedAt = ev.Timestamp
 			if m.sink != nil {
-				m.sink.Emit(session.HarmonicEvent{Time: time.Now().UTC().Format(time.RFC3339), Kind: "cue"})
+				m.sink.Emit(session.HarmonicEvent{Time: session.Stamp(time.Now()), Kind: "cue"})
 			}
 		}
 		m.held[ev.Data1] = true
@@ -181,7 +181,30 @@ func (m *Model) apply(ev midi.Event) {
 		m.recent = m.recent[len(m.recent)-maxRecent:]
 	}
 	m.recompute()
+	m.logMelodyOnset(ev)
 	m.logKeyIfChanged()
+}
+
+// logMelodyOnset emits a melody event when the note just struck lands in the
+// melody side of the split — the journal's melodic line, where chords alone are
+// blind. Uses the event's own timestamp (millisecond precision) so the reader
+// can reconstruct rhythm from inter-onset gaps.
+func (m *Model) logMelodyOnset(ev midi.Event) {
+	if m.sink == nil || !m.splitMelody || ev.Kind != midi.NoteOn || ev.Data2 == 0 || ev.Data1 == cueNote {
+		return
+	}
+	for _, n := range m.melody {
+		if n == ev.Data1 {
+			m.sink.Emit(session.HarmonicEvent{
+				Time: session.Stamp(ev.Timestamp),
+				Kind: "melody",
+				Note: theory.NoteNameIn(n, theory.Letters),
+				Midi: n,
+				Vel:  ev.Data2,
+			})
+			return
+		}
+	}
 }
 
 // reset forgets everything played — held notes, recent events, the key-detection
@@ -198,7 +221,7 @@ func (m *Model) reset() {
 	m.conf = 0
 	m.pedal = false
 	if m.sink != nil {
-		m.sink.Emit(session.HarmonicEvent{Time: time.Now().UTC().Format(time.RFC3339), Kind: "reset"})
+		m.sink.Emit(session.HarmonicEvent{Time: session.Stamp(time.Now()), Kind: "reset"})
 	}
 	m.lastLogKey = "" // re-log the key on the next note, to anchor the new segment
 }
@@ -261,7 +284,7 @@ func (m *Model) logChord(chord theory.Chord) {
 		return
 	}
 	ev := session.HarmonicEvent{
-		Time:    time.Now().UTC().Format(time.RFC3339),
+		Time:    session.Stamp(time.Now()),
 		Kind:    "chord",
 		Chord:   chord.StringIn(theory.Letters),
 		Solfege: chord.StringIn(theory.Solfege),
@@ -292,7 +315,7 @@ func (m *Model) logKeyIfChanged() {
 	}
 	m.lastLogKey = k
 	m.sink.Emit(session.HarmonicEvent{
-		Time: time.Now().UTC().Format(time.RFC3339),
+		Time: session.Stamp(time.Now()),
 		Kind: "key",
 		Key:  k,
 		Conf: m.conf,
