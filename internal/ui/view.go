@@ -26,7 +26,7 @@ var (
 )
 
 func (m Model) View() string {
-	allNotes := sortedHeld(m.held)
+	allNotes := m.sounding()
 
 	top := lipgloss.JoinHorizontal(
 		lipgloss.Top,
@@ -35,15 +35,24 @@ func (m Model) View() string {
 	)
 	harmony := panelStyle.Width(68).Render(m.harmonyPanel())
 
-	footer := dimStyle.Render("q quit · x reset · a auto · d drone · m mode · r relative · e split · n notation · ←/→ tonic")
+	footer := dimStyle.Render("q quit · x reset · a auto · d drone · m mode · r relative · e split · n notation · t texture · ←/→ tonic")
 
-	return lipgloss.JoinVertical(lipgloss.Left,
-		m.header(), "",
-		top, "",
-		harmony, "",
-		m.recentLine(), "",
-		footer,
-	)
+	parts := []string{m.header(), "", top, "", harmony, ""}
+	if m.replyPath != "" {
+		parts = append(parts, panelStyle.Width(68).Render(m.replyPanel()), "")
+	}
+	parts = append(parts, m.recentLine(), "", footer)
+	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+}
+
+// replyPanel shows the assistant's reply file content (the journal's return
+// channel). lipgloss wraps to the style width, so a few lines of prose fit.
+func (m Model) replyPanel() string {
+	body := dimStyle.Render("waiting for a reply…")
+	if m.reply != "" {
+		body = noteStyle.Width(64).Render(m.reply)
+	}
+	return panelTitleStyle.Render("assistant") + "\n" + body
 }
 
 func (m Model) header() string {
@@ -57,6 +66,9 @@ func (m Model) header() string {
 	}
 	line := titleStyle.Render("keys7") + dimStyle.Render("  ·  live harmony") +
 		"      " + labelStyle.Render(src) + dimStyle.Render(" · ") + status
+	if m.texture != TextureFree {
+		line += dimStyle.Render(" · ") + warnStyle.Render(m.texture.String())
+	}
 	if !m.cuedAt.IsZero() {
 		line += dimStyle.Render(" · ") + highlightStyle.Render("cue ✓ "+m.cuedAt.Format("15:04:05"))
 	}
@@ -83,7 +95,7 @@ func (m Model) playingPanel(allNotes []uint8) string {
 		}
 	}
 	b.WriteString(labelStyle.Render("chord  ") + chordStr + "\n")
-	b.WriteString(labelStyle.Render("held   ") + valueOrDash(noteNames(allNotes)) + "\n")
+	b.WriteString(labelStyle.Render("notes  ") + valueOrDash(noteNames(allNotes)) + "\n")
 	b.WriteString(labelStyle.Render("melody ") + valueOrDash(noteNames(m.melody)) + "\n")
 
 	pedal := dimStyle.Render("off")

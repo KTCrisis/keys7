@@ -35,11 +35,15 @@ type Model struct {
 	conf        float64
 	recentPCs   []uint8 // sliding window of recent note-on pitch classes
 	held        map[uint8]bool
+	sustained   map[uint8]bool // released while the pedal was down — still sounding
 	pedal       bool
 	recent      []midi.Event
 	closed      bool
 	cue         cueDetector
 	cuedAt      time.Time // last completed cue, for the header badge
+	replyPath   string    // assistant reply file (--reply); empty = no panel
+	reply       string    // last content read from it
+	texture     Texture   // declared playing texture (cycled with `t`)
 
 	// derived chord state, recomputed when the held notes change
 	core, melody    []uint8
@@ -54,6 +58,31 @@ type Model struct {
 // detectWindow is how many recent note-ons feed key detection.
 const detectWindow = 32
 
+// Texture is the player's declared playing mode — intent as a fact in the
+// journal, a strong prior for the reader's melody/harmony segmentation
+// (real-time inference can't tell an arpeggio from a line; the player can).
+type Texture int
+
+const (
+	TextureFree     Texture = iota // default: the reader infers
+	TextureBlock                   // chords are plaqués
+	TextureArpeggio                // chords are broken/arpeggiated
+)
+
+func (t Texture) String() string {
+	switch t {
+	case TextureBlock:
+		return "block"
+	case TextureArpeggio:
+		return "arpeggio"
+	default:
+		return "free"
+	}
+}
+
+// Next cycles free → block → arpeggio.
+func (t Texture) Next() Texture { return (t + 1) % 3 }
+
 // KeySource is how the active key is chosen.
 type KeySource int
 
@@ -65,8 +94,9 @@ const (
 
 // New builds the model. `events` is the source's channel; `fwd` is the mesh
 // seam (a NopForwarder for now); `key` is the starting key, and `autoKey`
-// enables inferring it from what's played.
-func New(sourceKind, port string, key theory.Key, keySrc KeySource, events <-chan midi.Event, fwd mesh.Forwarder, sink session.Sink) Model {
+// enables inferring it from what's played. `replyPath` is the assistant reply
+// file to poll ("" disables the panel).
+func New(sourceKind, port string, key theory.Key, keySrc KeySource, events <-chan midi.Event, fwd mesh.Forwarder, sink session.Sink, replyPath string) Model {
 	return Model{
 		sourceKind:  sourceKind,
 		port:        port,
@@ -76,11 +106,16 @@ func New(sourceKind, port string, key theory.Key, keySrc KeySource, events <-cha
 		events:      events,
 		fwd:         fwd,
 		sink:        sink,
+		replyPath:   replyPath,
 		held:        make(map[uint8]bool),
+		sustained:   make(map[uint8]bool),
 	}
 }
 
 func (m Model) Init() tea.Cmd {
+	if m.replyPath != "" {
+		return tea.Batch(waitForEvent(m.events), replyTick(m.replyPath))
+	}
 	return waitForEvent(m.events)
 }
 
@@ -139,6 +174,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.recompute()
 		case "n":
 			theory.ToggleNotation() // display-only; chord state is unchanged
+		case "t":
+			m.texture = m.texture.Next()
+			if m.sink != nil {
+				m.sink.Emit(session.HarmonicEvent{
+					Time: session.Stamp(time.Now()),
+					Kind: "texture",
+					Mode: m.texture.String(),
+				})
+			}
 		case "x":
 			m.reset() // forget everything played, keep settings
 		}
@@ -148,6 +192,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.apply(ev)
 		_ = m.fwd.Forward(ev) // phase-1 seam: NopForwarder, wired for the mesh later
 		return m, waitForEvent(m.events)
+	case replyMsg:
+		m.reply = string(msg)
+		return m, replyTick(m.replyPath)
 	case sourceClosedMsg:
 		m.closed = true
 	}
@@ -156,15 +203,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // apply folds one event into the view state.
 func (m *Model) apply(ev midi.Event) {
+	m.logRaw(ev)
 	switch {
 	case ev.Kind == midi.NoteOn && ev.Data2 > 0:
 		if ev.Data1 == cueNote && m.cue.Tap(ev.Timestamp) {
 			m.cuedAt = ev.Timestamp
 			if m.sink != nil {
-				m.sink.Emit(session.HarmonicEvent{Time: time.Now().UTC().Format(time.RFC3339), Kind: "cue"})
+				m.sink.Emit(session.HarmonicEvent{Time: session.Stamp(time.Now()), Kind: "cue"})
 			}
 		}
 		m.held[ev.Data1] = true
+		delete(m.sustained, ev.Data1) // re-struck: physically held again
 		m.recentPCs = append(m.recentPCs, ev.Data1%12)
 		if len(m.recentPCs) > detectWindow {
 			m.recentPCs = m.recentPCs[len(m.recentPCs)-detectWindow:]
@@ -173,15 +222,100 @@ func (m *Model) apply(ev midi.Event) {
 	case ev.Kind == midi.NoteOff, ev.Kind == midi.NoteOn && ev.Data2 == 0:
 		// A NoteOn with velocity 0 is the running-status convention for NoteOff.
 		delete(m.held, ev.Data1)
+		if m.pedal {
+			// The damper is up: the string keeps sounding. Keep the note in the
+			// harmonic picture until the pedal releases it — this is what lets a
+			// pedaled chord stay under a melody line played hands-off.
+			m.sustained[ev.Data1] = true
+		}
 	case ev.IsPedal():
+		wasDown := m.pedal
 		m.pedal = ev.PedalDown()
+		if wasDown && !m.pedal {
+			m.sustained = make(map[uint8]bool) // dampers fall: only held keys sound
+		}
 	}
 	m.recent = append(m.recent, ev)
 	if len(m.recent) > maxRecent {
 		m.recent = m.recent[len(m.recent)-maxRecent:]
 	}
+	// Low-melody detection is temporal, so it compares against the state from
+	// *before* this event: a note landing well below an already-sounding chord
+	// is a moving line; a bass struck together with its chord is the chord's.
+	wasChord, prevBottom := m.chordOK, uint8(0)
+	if len(m.core) > 0 {
+		prevBottom = m.core[0]
+	}
 	m.recompute()
+	m.logMelodyOnset(ev, wasChord, prevBottom)
 	m.logKeyIfChanged()
+}
+
+// logRaw journals the faithful capture layer: every note attack/release and
+// pedal move, milliseconds and velocity included. This is what a reader
+// segments with hindsight — arpeggio vs line is undecidable in real time but
+// easy once releases and accumulation are visible. Cue-note taps stay out:
+// they are signalling, not music.
+func (m *Model) logRaw(ev midi.Event) {
+	if m.sink == nil || (ev.Data1 == cueNote && ev.Kind != midi.ControlChange) {
+		return
+	}
+	switch {
+	case ev.Kind == midi.NoteOn && ev.Data2 > 0:
+		m.sink.Emit(session.HarmonicEvent{
+			Time: session.Stamp(ev.Timestamp), Kind: "note",
+			Note: theory.NoteNameIn(ev.Data1, theory.Letters), Midi: ev.Data1,
+			Vel: ev.Data2, On: session.Bool(true),
+		})
+	case ev.Kind == midi.NoteOff, ev.Kind == midi.NoteOn && ev.Data2 == 0:
+		m.sink.Emit(session.HarmonicEvent{
+			Time: session.Stamp(ev.Timestamp), Kind: "note",
+			Note: theory.NoteNameIn(ev.Data1, theory.Letters), Midi: ev.Data1,
+			On: session.Bool(false),
+		})
+	case ev.IsPedal():
+		m.sink.Emit(session.HarmonicEvent{
+			Time: session.Stamp(ev.Timestamp), Kind: "pedal",
+			On: session.Bool(ev.PedalDown()),
+		})
+	}
+}
+
+// logMelodyOnset emits a melody event when the note just struck is melodic —
+// either peeled off the top by the split ("high"), or struck well below a
+// chord that was already sounding ("low"). The journal's melodic line, where
+// chords alone are blind. Uses the event's own timestamp (millisecond
+// precision) so the reader can reconstruct rhythm from inter-onset gaps.
+//
+// The low case deliberately does not touch chord recognition: a planted bass
+// (slash chord, root under a right-hand triad) arrives with its chord, not
+// under one already heard, so it stays harmonic. The price is one spurious
+// melody event when a bass is added late under a held chord — context (a
+// single low onset vs a moving line) disambiguates in the journal.
+func (m *Model) logMelodyOnset(ev midi.Event, wasChord bool, prevBottom uint8) {
+	if m.sink == nil || !m.splitMelody || ev.Kind != midi.NoteOn || ev.Data2 == 0 || ev.Data1 == cueNote {
+		return
+	}
+	reg := ""
+	for _, n := range m.melody {
+		if n == ev.Data1 {
+			reg = "high"
+		}
+	}
+	if reg == "" && wasChord && ev.Data1+theory.DefaultMelodyGap <= prevBottom {
+		reg = "low"
+	}
+	if reg == "" {
+		return
+	}
+	m.sink.Emit(session.HarmonicEvent{
+		Time: session.Stamp(ev.Timestamp),
+		Kind: "melody",
+		Note: theory.NoteNameIn(ev.Data1, theory.Letters),
+		Midi: ev.Data1,
+		Vel:  ev.Data2,
+		Reg:  reg,
+	})
 }
 
 // reset forgets everything played — held notes, recent events, the key-detection
@@ -189,6 +323,7 @@ func (m *Model) apply(ev midi.Event) {
 // melody-split, auto-key). A clean slate to start a new idea.
 func (m *Model) reset() {
 	m.held = make(map[uint8]bool)
+	m.sustained = make(map[uint8]bool)
 	m.recentPCs = nil
 	m.recent = nil
 	m.core, m.melody = nil, nil
@@ -198,16 +333,29 @@ func (m *Model) reset() {
 	m.conf = 0
 	m.pedal = false
 	if m.sink != nil {
-		m.sink.Emit(session.HarmonicEvent{Time: time.Now().UTC().Format(time.RFC3339), Kind: "reset"})
+		m.sink.Emit(session.HarmonicEvent{Time: session.Stamp(time.Now()), Kind: "reset"})
 	}
 	m.lastLogKey = "" // re-log the key on the next note, to anchor the new segment
 }
 
-// recompute derives the chord state from the held notes. It tracks the previous
-// recognized chord (persisting across key releases) so the view can confirm
-// when the chord just played fulfilled a suggestion from the one before it.
+// sounding merges physically held keys with pedal-sustained notes — the set the
+// harmonic analysis should hear, as opposed to the keys under the fingers.
+func (m *Model) sounding() []uint8 {
+	all := make(map[uint8]bool, len(m.held)+len(m.sustained))
+	for n := range m.held {
+		all[n] = true
+	}
+	for n := range m.sustained {
+		all[n] = true
+	}
+	return sortedHeld(all)
+}
+
+// recompute derives the chord state from the sounding notes. It tracks the
+// previous recognized chord (persisting across key releases) so the view can
+// confirm when the chord just played fulfilled a suggestion from the one before.
 func (m *Model) recompute() {
-	notes := sortedHeld(m.held)
+	notes := m.sounding()
 	core, melody := notes, []uint8(nil)
 	if m.splitMelody {
 		core, melody = theory.SplitMelody(notes, theory.DefaultMelodyGap)
@@ -243,12 +391,15 @@ func (m *Model) trackKey() {
 	}
 }
 
-// bassPC returns the pitch class of the lowest held note.
+// bassPC returns the pitch class of the lowest sounding note (held or
+// pedal-sustained) — a pedaled drone keeps anchoring the key in drone mode.
 func (m *Model) bassPC() (uint8, bool) {
 	lowest, found := uint8(0), false
-	for n := range m.held {
-		if !found || n < lowest {
-			lowest, found = n, true
+	for _, set := range []map[uint8]bool{m.held, m.sustained} {
+		for n := range set {
+			if !found || n < lowest {
+				lowest, found = n, true
+			}
 		}
 	}
 	return lowest % 12, found
@@ -261,7 +412,7 @@ func (m *Model) logChord(chord theory.Chord) {
 		return
 	}
 	ev := session.HarmonicEvent{
-		Time:    time.Now().UTC().Format(time.RFC3339),
+		Time:    session.Stamp(time.Now()),
 		Kind:    "chord",
 		Chord:   chord.StringIn(theory.Letters),
 		Solfege: chord.StringIn(theory.Solfege),
@@ -292,7 +443,7 @@ func (m *Model) logKeyIfChanged() {
 	}
 	m.lastLogKey = k
 	m.sink.Emit(session.HarmonicEvent{
-		Time: time.Now().UTC().Format(time.RFC3339),
+		Time: session.Stamp(time.Now()),
 		Kind: "key",
 		Key:  k,
 		Conf: m.conf,

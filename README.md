@@ -66,7 +66,10 @@ keys7.exe --source=device --key auto --log "C:\…\session.jsonl"
 
 - `--key` : `C`, `Am`, `F#m`, … · `auto` (infer) · `drone` (pin to bass)
 - `--notation` : `letters` (C D E) · `solfege` (Do Ré Mi)
-- `--log <file>` : append heard chords/keys as JSONL (the AI bridge)
+- `--log <file>` : append heard chords/keys/melody as JSONL (the AI bridge)
+- `--reply <file>` : poll a text file and show it in an "assistant" panel —
+  the bridge's return channel (polling, not fsnotify: change notifications
+  don't cross the WSL/Windows mount; reads do)
 
 ## TUI keys
 
@@ -74,15 +77,31 @@ keys7.exe --source=device --key auto --log "C:\…\session.jsonl"
 ←/→  shift the tonic         m  cycle major / natural / harmonic / melodic minor
 r    relative key            a  auto key-detection      d  drone (bass-pinned)
 e    melody/harmony split    n  notation (letters↔solfège)
+t    texture (free/block/arpeggio — declared intent, journaled)
 x    reset (forget playing)  q  quit
 ```
 
 ## The AI bridge
 
-With `--log`, keys7 appends one JSON object per event: a `chord` (letters +
+With `--log`, keys7 appends one JSON object per event, in two layers. The
+**faithful capture**: every `note` attack/release (name, number, velocity) and
+`pedal` move, millisecond-stamped — the raw material a reader segments with
+hindsight, where arpeggio-vs-line is easy (it is undecidable in real time).
+A `texture` event records the player's declared mode (`t` key: free / block /
+arpeggio) — intent as a fact, a strong prior for that segmentation. And the
+**live interpretation**: a `chord` (letters +
 solfège, with its diatonic degree, or the secondary dominant it is if
-chromatic), a `key` change (with detection confidence), a `reset` marker, or a
-`cue`. An assistant reads the file to know what's being played and suggest over
+chromatic), a `key` change (with detection confidence), a `melody` onset (note
+name, number, velocity, and a register: `"reg":"high"` for a line over the
+chord, `"reg":"low"` for one walking under it — a left-hand melody beneath
+right-hand chords. Low detection is temporal (a note landing well below an
+already-sounding chord), so planted basses and slash chords stay harmonic),
+a `reset` marker, or a `cue`. Timestamps carry milliseconds, so a reader
+can reconstruct the melodic rhythm from inter-onset gaps. The split classifies
+melody over a sounding chord (≥ 3 remaining notes) — held by fingers **or by
+the sustain pedal**: notes released with the damper up stay in the harmonic
+picture until the pedal comes up, so a pedaled chord under a hands-off line
+journals like a held one. An assistant reads the file to know what's being played and suggest over
 it — the concrete realisation of the otherwise-dormant mesh `Forwarder` seam.
 Put the log on a path both sides can see (e.g. under `/mnt/c/…` from WSL).
 
@@ -105,12 +124,23 @@ play7.exe --port "P-125" sequence.json
 echo '{"steps":[{"notes":["C4","E4","G4"],"beats":2}]}' | play7.exe
 ```
 
-A sequence is `{tempo, channel, velocity, steps:[{notes, beats, velocity}]}` —
-notes in scientific pitch ("A3", "F#4", chords as arrays, no notes = rest),
-beats at the sequence tempo, step velocity overriding the sequence's. Defaults:
-90 BPM, channel 1, velocity 80. `--out=mock` prints the messages instead of
-playing (the WSL audition mode); Ctrl-C sends All Notes Off before exiting so
-the piano never rings on.
+A sequence is one or more **voices**, each with its own steps and velocity,
+all starting together — a melody can move, louder, over a chord the other
+voice holds:
+
+```json
+{"tempo": 65, "voices": [
+  {"velocity": 90, "steps": [{"notes": ["D5"], "beats": 1}, {"notes": ["F5"], "beats": 2}]},
+  {"velocity": 58, "steps": [{"notes": ["Bb2", "D3", "F3", "A3"], "beats": 3}]}
+]}
+```
+
+Notes are scientific pitch ("A3", "F#4"), chords are arrays, no notes = rest;
+beats run at the sequence tempo; velocity resolves step > voice > sequence.
+A top-level `steps` array is shorthand for a single voice. Defaults: 90 BPM,
+channel 1, velocity 80. `--out=mock` prints the messages instead of playing
+(the WSL audition mode); Ctrl-C sends All Notes Off before exiting so the
+piano never rings on.
 
 ## Cross-platform notes
 
@@ -128,5 +158,4 @@ the piano never rings on.
   style-aware coaching drawing on flux7-memory and the Renoise analyses corpus.
 - Richer drone/modal detection (distinguish Dorian, Phrygian, … not just
   major/minor by the third).
-- Pedal-aware chord segmentation (notes still sounding under sustain).
-- UI-layer tests; packaging / a tagged release.
+- Packaging / a tagged release.
