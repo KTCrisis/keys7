@@ -35,6 +35,7 @@ type Model struct {
 	conf        float64
 	recentPCs   []uint8 // sliding window of recent note-on pitch classes
 	held        map[uint8]bool
+	sustained   map[uint8]bool // released while the pedal was down — still sounding
 	pedal       bool
 	recent      []midi.Event
 	closed      bool
@@ -81,6 +82,7 @@ func New(sourceKind, port string, key theory.Key, keySrc KeySource, events <-cha
 		sink:        sink,
 		replyPath:   replyPath,
 		held:        make(map[uint8]bool),
+		sustained:   make(map[uint8]bool),
 	}
 }
 
@@ -175,6 +177,7 @@ func (m *Model) apply(ev midi.Event) {
 			}
 		}
 		m.held[ev.Data1] = true
+		delete(m.sustained, ev.Data1) // re-struck: physically held again
 		m.recentPCs = append(m.recentPCs, ev.Data1%12)
 		if len(m.recentPCs) > detectWindow {
 			m.recentPCs = m.recentPCs[len(m.recentPCs)-detectWindow:]
@@ -183,8 +186,18 @@ func (m *Model) apply(ev midi.Event) {
 	case ev.Kind == midi.NoteOff, ev.Kind == midi.NoteOn && ev.Data2 == 0:
 		// A NoteOn with velocity 0 is the running-status convention for NoteOff.
 		delete(m.held, ev.Data1)
+		if m.pedal {
+			// The damper is up: the string keeps sounding. Keep the note in the
+			// harmonic picture until the pedal releases it — this is what lets a
+			// pedaled chord stay under a melody line played hands-off.
+			m.sustained[ev.Data1] = true
+		}
 	case ev.IsPedal():
+		wasDown := m.pedal
 		m.pedal = ev.PedalDown()
+		if wasDown && !m.pedal {
+			m.sustained = make(map[uint8]bool) // dampers fall: only held keys sound
+		}
 	}
 	m.recent = append(m.recent, ev)
 	if len(m.recent) > maxRecent {
@@ -222,6 +235,7 @@ func (m *Model) logMelodyOnset(ev midi.Event) {
 // melody-split, auto-key). A clean slate to start a new idea.
 func (m *Model) reset() {
 	m.held = make(map[uint8]bool)
+	m.sustained = make(map[uint8]bool)
 	m.recentPCs = nil
 	m.recent = nil
 	m.core, m.melody = nil, nil
@@ -236,11 +250,24 @@ func (m *Model) reset() {
 	m.lastLogKey = "" // re-log the key on the next note, to anchor the new segment
 }
 
-// recompute derives the chord state from the held notes. It tracks the previous
-// recognized chord (persisting across key releases) so the view can confirm
-// when the chord just played fulfilled a suggestion from the one before it.
+// sounding merges physically held keys with pedal-sustained notes — the set the
+// harmonic analysis should hear, as opposed to the keys under the fingers.
+func (m *Model) sounding() []uint8 {
+	all := make(map[uint8]bool, len(m.held)+len(m.sustained))
+	for n := range m.held {
+		all[n] = true
+	}
+	for n := range m.sustained {
+		all[n] = true
+	}
+	return sortedHeld(all)
+}
+
+// recompute derives the chord state from the sounding notes. It tracks the
+// previous recognized chord (persisting across key releases) so the view can
+// confirm when the chord just played fulfilled a suggestion from the one before.
 func (m *Model) recompute() {
-	notes := sortedHeld(m.held)
+	notes := m.sounding()
 	core, melody := notes, []uint8(nil)
 	if m.splitMelody {
 		core, melody = theory.SplitMelody(notes, theory.DefaultMelodyGap)
@@ -276,12 +303,15 @@ func (m *Model) trackKey() {
 	}
 }
 
-// bassPC returns the pitch class of the lowest held note.
+// bassPC returns the pitch class of the lowest sounding note (held or
+// pedal-sustained) — a pedaled drone keeps anchoring the key in drone mode.
 func (m *Model) bassPC() (uint8, bool) {
 	lowest, found := uint8(0), false
-	for n := range m.held {
-		if !found || n < lowest {
-			lowest, found = n, true
+	for _, set := range []map[uint8]bool{m.held, m.sustained} {
+		for n := range set {
+			if !found || n < lowest {
+				lowest, found = n, true
+			}
 		}
 	}
 	return lowest % 12, found

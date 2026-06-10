@@ -87,9 +87,11 @@ solfège, with its diatonic degree, or the secondary dominant it is if
 chromatic), a `key` change (with detection confidence), a `melody` onset (note
 name, number, velocity — every note the melody/harmony split peels off the
 top), a `reset` marker, or a `cue`. Timestamps carry milliseconds, so a reader
-can reconstruct the melodic rhythm from inter-onset gaps. The split only
-classifies melody over a held chord (≥ 3 remaining notes) — keep the left hand
-down for the line to be journaled; pedal-aware segmentation will lift this. An assistant reads the file to know what's being played and suggest over
+can reconstruct the melodic rhythm from inter-onset gaps. The split classifies
+melody over a sounding chord (≥ 3 remaining notes) — held by fingers **or by
+the sustain pedal**: notes released with the damper up stay in the harmonic
+picture until the pedal comes up, so a pedaled chord under a hands-off line
+journals like a held one. An assistant reads the file to know what's being played and suggest over
 it — the concrete realisation of the otherwise-dormant mesh `Forwarder` seam.
 Put the log on a path both sides can see (e.g. under `/mnt/c/…` from WSL).
 
@@ -135,5 +137,4 @@ the piano never rings on.
   style-aware coaching drawing on flux7-memory and the Renoise analyses corpus.
 - Richer drone/modal detection (distinguish Dorian, Phrygian, … not just
   major/minor by the third).
-- Pedal-aware chord segmentation (notes still sounding under sustain).
-- UI-layer tests; packaging / a tagged release.
+- Packaging / a tagged release.

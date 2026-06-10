@@ -26,7 +26,7 @@ var (
 )
 
 func (m Model) View() string {
-	allNotes := sortedHeld(m.held)
+	allNotes := m.sounding()
 
 	top := lipgloss.JoinHorizontal(
 		lipgloss.Top,
@@ -92,7 +92,7 @@ func (m Model) playingPanel(allNotes []uint8) string {
 		}
 	}
 	b.WriteString(labelStyle.Render("chord  ") + chordStr + "\n")
-	b.WriteString(labelStyle.Render("held   ") + valueOrDash(noteNames(allNotes)) + "\n")
+	b.WriteString(labelStyle.Render("notes  ") + valueOrDash(noteNames(allNotes)) + "\n")
 	b.WriteString(labelStyle.Render("melody ") + valueOrDash(noteNames(m.melody)) + "\n")
 
 	pedal := dimStyle.Render("off")
