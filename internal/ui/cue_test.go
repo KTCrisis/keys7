@@ -51,7 +51,7 @@ func (s *captureSink) Emit(e session.HarmonicEvent) { s.events = append(s.events
 // A double-tap of the cue note must travel through apply and reach the sink.
 func TestModelEmitsCueEvent(t *testing.T) {
 	sink := &captureSink{}
-	m := New("mock", "", theory.Key{}, KeyManual, nil, mesh.NopForwarder{}, sink)
+	m := New("mock", "", theory.Key{}, KeyManual, nil, mesh.NopForwarder{}, sink, "")
 
 	t0 := time.Date(2026, 6, 10, 20, 0, 0, 0, time.UTC)
 	tap := func(at time.Time) {

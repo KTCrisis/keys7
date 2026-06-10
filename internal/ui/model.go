@@ -40,6 +40,8 @@ type Model struct {
 	closed      bool
 	cue         cueDetector
 	cuedAt      time.Time // last completed cue, for the header badge
+	replyPath   string    // assistant reply file (--reply); empty = no panel
+	reply       string    // last content read from it
 
 	// derived chord state, recomputed when the held notes change
 	core, melody    []uint8
@@ -65,8 +67,9 @@ const (
 
 // New builds the model. `events` is the source's channel; `fwd` is the mesh
 // seam (a NopForwarder for now); `key` is the starting key, and `autoKey`
-// enables inferring it from what's played.
-func New(sourceKind, port string, key theory.Key, keySrc KeySource, events <-chan midi.Event, fwd mesh.Forwarder, sink session.Sink) Model {
+// enables inferring it from what's played. `replyPath` is the assistant reply
+// file to poll ("" disables the panel).
+func New(sourceKind, port string, key theory.Key, keySrc KeySource, events <-chan midi.Event, fwd mesh.Forwarder, sink session.Sink, replyPath string) Model {
 	return Model{
 		sourceKind:  sourceKind,
 		port:        port,
@@ -76,11 +79,15 @@ func New(sourceKind, port string, key theory.Key, keySrc KeySource, events <-cha
 		events:      events,
 		fwd:         fwd,
 		sink:        sink,
+		replyPath:   replyPath,
 		held:        make(map[uint8]bool),
 	}
 }
 
 func (m Model) Init() tea.Cmd {
+	if m.replyPath != "" {
+		return tea.Batch(waitForEvent(m.events), replyTick(m.replyPath))
+	}
 	return waitForEvent(m.events)
 }
 
@@ -148,6 +155,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.apply(ev)
 		_ = m.fwd.Forward(ev) // phase-1 seam: NopForwarder, wired for the mesh later
 		return m, waitForEvent(m.events)
+	case replyMsg:
+		m.reply = string(msg)
+		return m, replyTick(m.replyPath)
 	case sourceClosedMsg:
 		m.closed = true
 	}

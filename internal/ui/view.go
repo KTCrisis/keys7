@@ -37,13 +37,22 @@ func (m Model) View() string {
 
 	footer := dimStyle.Render("q quit · x reset · a auto · d drone · m mode · r relative · e split · n notation · ←/→ tonic")
 
-	return lipgloss.JoinVertical(lipgloss.Left,
-		m.header(), "",
-		top, "",
-		harmony, "",
-		m.recentLine(), "",
-		footer,
-	)
+	parts := []string{m.header(), "", top, "", harmony, ""}
+	if m.replyPath != "" {
+		parts = append(parts, panelStyle.Width(68).Render(m.replyPanel()), "")
+	}
+	parts = append(parts, m.recentLine(), "", footer)
+	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+}
+
+// replyPanel shows the assistant's reply file content (the journal's return
+// channel). lipgloss wraps to the style width, so a few lines of prose fit.
+func (m Model) replyPanel() string {
+	body := dimStyle.Render("waiting for a reply…")
+	if m.reply != "" {
+		body = noteStyle.Width(64).Render(m.reply)
+	}
+	return panelTitleStyle.Render("assistant") + "\n" + body
 }
 
 func (m Model) header() string {

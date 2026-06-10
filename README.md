@@ -66,7 +66,10 @@ keys7.exe --source=device --key auto --log "C:\…\session.jsonl"
 
 - `--key` : `C`, `Am`, `F#m`, … · `auto` (infer) · `drone` (pin to bass)
 - `--notation` : `letters` (C D E) · `solfege` (Do Ré Mi)
-- `--log <file>` : append heard chords/keys as JSONL (the AI bridge)
+- `--log <file>` : append heard chords/keys/melody as JSONL (the AI bridge)
+- `--reply <file>` : poll a text file and show it in an "assistant" panel —
+  the bridge's return channel (polling, not fsnotify: change notifications
+  don't cross the WSL/Windows mount; reads do)
 
 ## TUI keys
 

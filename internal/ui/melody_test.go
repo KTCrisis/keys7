@@ -13,7 +13,7 @@ import (
 // event with the onset's own (millisecond) timestamp; the chord tones must not.
 func TestModelLogsMelodyOnsets(t *testing.T) {
 	sink := &captureSink{}
-	m := New("mock", "", theory.Key{}, KeyManual, nil, mesh.NopForwarder{}, sink)
+	m := New("mock", "", theory.Key{}, KeyManual, nil, mesh.NopForwarder{}, sink, "")
 
 	t0 := time.Date(2026, 6, 10, 20, 0, 0, 0, time.UTC)
 	press := func(note uint8, at time.Time) {
@@ -57,7 +57,7 @@ func TestModelLogsMelodyOnsets(t *testing.T) {
 // With the split off (key `e`), nothing is classified as melody.
 func TestNoMelodyLogWhenSplitOff(t *testing.T) {
 	sink := &captureSink{}
-	m := New("mock", "", theory.Key{}, KeyManual, nil, mesh.NopForwarder{}, sink)
+	m := New("mock", "", theory.Key{}, KeyManual, nil, mesh.NopForwarder{}, sink, "")
 	m.splitMelody = false
 
 	t0 := time.Date(2026, 6, 10, 20, 0, 0, 0, time.UTC)

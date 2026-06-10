@@ -21,6 +21,7 @@ func main() {
 	keyFlag := flag.String("key", "C", `key for cadence hints: "C", "Am", "F#m", "auto" (infer), or "drone" (pin to bass)`)
 	notationFlag := flag.String("notation", "letters", `note spelling: "letters" (C D E) or "solfege" (Do Ré Mi)`)
 	logFlag := flag.String("log", "", "append heard chords/keys as JSONL to this file (the AI bridge)")
+	replyFlag := flag.String("reply", "", "poll this text file and show it in the TUI (the assistant's reply)")
 	flag.Parse()
 
 	if strings.EqualFold(*notationFlag, "solfege") || strings.EqualFold(*notationFlag, "fr") {
@@ -60,7 +61,7 @@ func main() {
 		sink = session.NewJSONLSink(f)
 	}
 
-	m := ui.New(*source, *port, key, keySrc, src.Events(), mesh.NopForwarder{}, sink)
+	m := ui.New(*source, *port, key, keySrc, src.Events(), mesh.NopForwarder{}, sink, *replyFlag)
 	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "keys7:", err)
 		os.Exit(1)
