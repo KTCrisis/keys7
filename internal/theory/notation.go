@@ -1,6 +1,10 @@
 package theory
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
 
 // Notation selects how note names are spelled.
 type Notation int
@@ -59,3 +63,36 @@ func NoteNameIn(note uint8, n Notation) string {
 // PitchClassName / NoteName use the active notation.
 func PitchClassName(pc uint8) string { return PitchClassNameIn(pc, active) }
 func NoteName(note uint8) string     { return NoteNameIn(note, active) }
+
+// ParseNote reads scientific pitch notation ("C4", "F#3", "Bb-1") into a MIDI
+// note number — the inverse of NoteNameIn. Letters only: sequences are data,
+// solfege stays a display concern.
+func ParseNote(s string) (uint8, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, fmt.Errorf("empty note")
+	}
+	pcU, ok := letterPC[s[0]&^0x20]
+	if !ok {
+		return 0, fmt.Errorf("bad note %q: expected a letter A-G", s)
+	}
+	// Signed, no %12 wrap: Cb4 must come out below C4 (= B3), not as B4.
+	pc, i := int(pcU), 1
+	if i < len(s) {
+		switch s[i] {
+		case '#':
+			pc, i = pc+1, i+1
+		case 'b':
+			pc, i = pc-1, i+1
+		}
+	}
+	oct, err := strconv.Atoi(s[i:])
+	if err != nil {
+		return 0, fmt.Errorf("bad note %q: expected an octave like C4", s)
+	}
+	n := (oct-octaveOffset)*12 + pc
+	if n < 0 || n > 127 {
+		return 0, fmt.Errorf("note %q is outside the MIDI range 0-127", s)
+	}
+	return uint8(n), nil
+}
