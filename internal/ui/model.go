@@ -38,6 +38,8 @@ type Model struct {
 	pedal       bool
 	recent      []midi.Event
 	closed      bool
+	cue         cueDetector
+	cuedAt      time.Time // last completed cue, for the header badge
 
 	// derived chord state, recomputed when the held notes change
 	core, melody    []uint8
@@ -156,6 +158,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) apply(ev midi.Event) {
 	switch {
 	case ev.Kind == midi.NoteOn && ev.Data2 > 0:
+		if ev.Data1 == cueNote && m.cue.Tap(ev.Timestamp) {
+			m.cuedAt = ev.Timestamp
+			if m.sink != nil {
+				m.sink.Emit(session.HarmonicEvent{Time: time.Now().UTC().Format(time.RFC3339), Kind: "cue"})
+			}
+		}
 		m.held[ev.Data1] = true
 		m.recentPCs = append(m.recentPCs, ev.Data1%12)
 		if len(m.recentPCs) > detectWindow {

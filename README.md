@@ -81,10 +81,16 @@ x    reset (forget playing)  q  quit
 
 With `--log`, keys7 appends one JSON object per event: a `chord` (letters +
 solfège, with its diatonic degree, or the secondary dominant it is if
-chromatic), a `key` change (with detection confidence), or a `reset` marker.
-An assistant reads the file to know what's being played and suggest over it —
-the concrete realisation of the otherwise-dormant mesh `Forwarder` seam. Put the
-log on a path both sides can see (e.g. under `/mnt/c/…` from WSL).
+chromatic), a `key` change (with detection confidence), a `reset` marker, or a
+`cue`. An assistant reads the file to know what's being played and suggest over
+it — the concrete realisation of the otherwise-dormant mesh `Forwarder` seam.
+Put the log on a path both sides can see (e.g. under `/mnt/c/…` from WSL).
+
+The **cue** is the "your turn" gesture: double-tap A0 (the lowest key) within
+2 s and keys7 logs `{"kind":"cue"}` (the header shows `cue ✓`). An assistant
+polling the journal answers only on cue — combined with play7 on the same
+piano's MIDI in, that's a full conversation without leaving the bench: you
+play, double-tap, and the answer comes back through the instrument.
 
 ## play7 — playing *to* the piano
 
