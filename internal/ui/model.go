@@ -203,31 +203,53 @@ func (m *Model) apply(ev midi.Event) {
 	if len(m.recent) > maxRecent {
 		m.recent = m.recent[len(m.recent)-maxRecent:]
 	}
+	// Low-melody detection is temporal, so it compares against the state from
+	// *before* this event: a note landing well below an already-sounding chord
+	// is a moving line; a bass struck together with its chord is the chord's.
+	wasChord, prevBottom := m.chordOK, uint8(0)
+	if len(m.core) > 0 {
+		prevBottom = m.core[0]
+	}
 	m.recompute()
-	m.logMelodyOnset(ev)
+	m.logMelodyOnset(ev, wasChord, prevBottom)
 	m.logKeyIfChanged()
 }
 
-// logMelodyOnset emits a melody event when the note just struck lands in the
-// melody side of the split — the journal's melodic line, where chords alone are
-// blind. Uses the event's own timestamp (millisecond precision) so the reader
-// can reconstruct rhythm from inter-onset gaps.
-func (m *Model) logMelodyOnset(ev midi.Event) {
+// logMelodyOnset emits a melody event when the note just struck is melodic —
+// either peeled off the top by the split ("high"), or struck well below a
+// chord that was already sounding ("low"). The journal's melodic line, where
+// chords alone are blind. Uses the event's own timestamp (millisecond
+// precision) so the reader can reconstruct rhythm from inter-onset gaps.
+//
+// The low case deliberately does not touch chord recognition: a planted bass
+// (slash chord, root under a right-hand triad) arrives with its chord, not
+// under one already heard, so it stays harmonic. The price is one spurious
+// melody event when a bass is added late under a held chord — context (a
+// single low onset vs a moving line) disambiguates in the journal.
+func (m *Model) logMelodyOnset(ev midi.Event, wasChord bool, prevBottom uint8) {
 	if m.sink == nil || !m.splitMelody || ev.Kind != midi.NoteOn || ev.Data2 == 0 || ev.Data1 == cueNote {
 		return
 	}
+	reg := ""
 	for _, n := range m.melody {
 		if n == ev.Data1 {
-			m.sink.Emit(session.HarmonicEvent{
-				Time: session.Stamp(ev.Timestamp),
-				Kind: "melody",
-				Note: theory.NoteNameIn(n, theory.Letters),
-				Midi: n,
-				Vel:  ev.Data2,
-			})
-			return
+			reg = "high"
 		}
 	}
+	if reg == "" && wasChord && ev.Data1+theory.DefaultMelodyGap <= prevBottom {
+		reg = "low"
+	}
+	if reg == "" {
+		return
+	}
+	m.sink.Emit(session.HarmonicEvent{
+		Time: session.Stamp(ev.Timestamp),
+		Kind: "melody",
+		Note: theory.NoteNameIn(ev.Data1, theory.Letters),
+		Midi: ev.Data1,
+		Vel:  ev.Data2,
+		Reg:  reg,
+	})
 }
 
 // reset forgets everything played — held notes, recent events, the key-detection

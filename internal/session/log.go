@@ -26,6 +26,7 @@ type HarmonicEvent struct {
 	Note    string  `json:"note,omitempty"` // chord annotation, or the melody note name ("A4")
 	Midi    uint8   `json:"midi,omitempty"` // melody note number
 	Vel     uint8   `json:"v,omitempty"`    // melody onset velocity
+	Reg     string  `json:"reg,omitempty"`  // melody register: "high" (over the chord) | "low" (under it)
 }
 
 // Stamp formats an event time: RFC3339 with milliseconds, so melody rhythm can

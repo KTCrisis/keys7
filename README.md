@@ -85,8 +85,11 @@ x    reset (forget playing)  q  quit
 With `--log`, keys7 appends one JSON object per event: a `chord` (letters +
 solfège, with its diatonic degree, or the secondary dominant it is if
 chromatic), a `key` change (with detection confidence), a `melody` onset (note
-name, number, velocity — every note the melody/harmony split peels off the
-top), a `reset` marker, or a `cue`. Timestamps carry milliseconds, so a reader
+name, number, velocity, and a register: `"reg":"high"` for a line over the
+chord, `"reg":"low"` for one walking under it — a left-hand melody beneath
+right-hand chords. Low detection is temporal (a note landing well below an
+already-sounding chord), so planted basses and slash chords stay harmonic),
+a `reset` marker, or a `cue`. Timestamps carry milliseconds, so a reader
 can reconstruct the melodic rhythm from inter-onset gaps. The split classifies
 melody over a sounding chord (≥ 3 remaining notes) — held by fingers **or by
 the sustain pedal**: notes released with the damper up stay in the harmonic
