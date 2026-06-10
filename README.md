@@ -29,12 +29,16 @@ where events come from.
 
 ```
 cmd/keys7/main.go     entry; flags --source --port --key --notation --log
-internal/midi/        source interface + events
-  device_windows.go     //go:build windows  — WinMM, pure Go (no CGO)
+cmd/play7/main.go     output twin: plays a JSON sequence on a MIDI out device
+internal/midi/        source/output interfaces + events
+  device_windows.go     //go:build windows  — WinMM input, pure Go (no CGO)
   device_other.go       //go:build !windows — clear error; use mock
   mock.go               synthetic source (default, for WSL/dev)
+  out_windows.go        //go:build windows  — WinMM output (play7)
+  out_other.go          //go:build !windows — clear error; use --out=mock
 internal/theory/      pure pitch math: chords, dyads, keys/modes, cadences,
                       neighbours, secondary dominants, key detection, notation
+internal/sequence/    JSON sequence parsing + scheduling (pure, like theory)
 internal/ui/          Bubble Tea model + view (panels)
 internal/session/     harmonic-event log (the AI bridge)
 internal/mesh/        Forwarder seam (no-op; real-time transport later)
@@ -81,6 +85,26 @@ chromatic), a `key` change (with detection confidence), or a `reset` marker.
 An assistant reads the file to know what's being played and suggest over it —
 the concrete realisation of the otherwise-dormant mesh `Forwarder` seam. Put the
 log on a path both sides can see (e.g. under `/mnt/c/…` from WSL).
+
+## play7 — playing *to* the piano
+
+Where keys7 listens (resident TUI on MIDI in), play7 speaks: a silent one-shot
+CLI that plays a JSON note/chord sequence on a MIDI output — so a machine (or
+an assistant) can sound ideas on the piano instead of describing them.
+
+```bash
+make build-play7-windows   # cross-compiles bin/play7.exe, same no-CGO story
+play7.exe --list           # name the output devices
+play7.exe --port "P-125" sequence.json
+echo '{"steps":[{"notes":["C4","E4","G4"],"beats":2}]}' | play7.exe
+```
+
+A sequence is `{tempo, channel, velocity, steps:[{notes, beats, velocity}]}` —
+notes in scientific pitch ("A3", "F#4", chords as arrays, no notes = rest),
+beats at the sequence tempo, step velocity overriding the sequence's. Defaults:
+90 BPM, channel 1, velocity 80. `--out=mock` prints the messages instead of
+playing (the WSL audition mode); Ctrl-C sends All Notes Off before exiting so
+the piano never rings on.
 
 ## Cross-platform notes
 
