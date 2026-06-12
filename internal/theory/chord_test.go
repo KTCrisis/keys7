@@ -24,16 +24,16 @@ func TestIdentify(t *testing.T) {
 		{"Am7 over A", []uint8{57, 60, 64, 67}, "Am7"},
 		{"voicing across octaves", []uint8{48, 64, 67, 84}, "C"}, // C2 E4 G4 C6
 		// fifth-less voicings (common on piano)
-		{"C7 no fifth", []uint8{60, 64, 70}, "C7"},        // C E Bb
-		{"Cmaj7 no fifth", []uint8{60, 64, 71}, "Cmaj7"},  // C E B
-		{"Dm7 no fifth", []uint8{62, 65, 72}, "Dm7"},      // D F C
+		{"C7 no fifth", []uint8{60, 64, 70}, "C7"},       // C E Bb
+		{"Cmaj7 no fifth", []uint8{60, 64, 71}, "Cmaj7"}, // C E B
+		{"Dm7 no fifth", []uint8{62, 65, 72}, "Dm7"},     // D F C
 		// extended chords
-		{"C9", []uint8{60, 64, 67, 70, 74}, "C9"},         // C E G Bb D
-		{"Cmaj9", []uint8{60, 64, 67, 71, 74}, "Cmaj9"},   // C E G B D
-		{"Cm9", []uint8{60, 63, 67, 70, 74}, "Cm9"},       // C Eb G Bb D
-		{"C13", []uint8{60, 64, 70, 74, 81}, "C13"},       // C E Bb D A (no 5)
-		{"Cadd9", []uint8{60, 64, 67, 74}, "Cadd9"},       // C E G D, no 7th
-		{"C6/9", []uint8{60, 64, 67, 69, 74}, "C6/9"},     // C E G A D
+		{"C9", []uint8{60, 64, 67, 70, 74}, "C9"},       // C E G Bb D
+		{"Cmaj9", []uint8{60, 64, 67, 71, 74}, "Cmaj9"}, // C E G B D
+		{"Cm9", []uint8{60, 63, 67, 70, 74}, "Cm9"},     // C Eb G Bb D
+		{"C13", []uint8{60, 64, 70, 74, 81}, "C13"},     // C E Bb D A (no 5)
+		{"Cadd9", []uint8{60, 64, 67, 74}, "Cadd9"},     // C E G D, no 7th
+		{"C6/9", []uint8{60, 64, 67, 69, 74}, "C6/9"},   // C E G A D
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

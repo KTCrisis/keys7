@@ -104,12 +104,12 @@ func TestDegreeOf(t *testing.T) {
 		deg   int
 		ok    bool
 	}{
-		{Chord{Root: 7, Suffix: "7"}, 5, true},      // G7 -> V
-		{Chord{Root: 0, Suffix: "maj7"}, 1, true},   // Cmaj7 -> I
-		{Chord{Root: 9, Suffix: "m"}, 6, true},      // Am -> vi
-		{Chord{Root: 11, Suffix: "dim"}, 7, true},   // Bdim -> vii°
-		{Chord{Root: 0, Suffix: "sus4"}, 0, false},  // sus has no degree
-		{Chord{Root: 1, Suffix: ""}, 0, false},      // C# not in C major
+		{Chord{Root: 7, Suffix: "7"}, 5, true},     // G7 -> V
+		{Chord{Root: 0, Suffix: "maj7"}, 1, true},  // Cmaj7 -> I
+		{Chord{Root: 9, Suffix: "m"}, 6, true},     // Am -> vi
+		{Chord{Root: 11, Suffix: "dim"}, 7, true},  // Bdim -> vii°
+		{Chord{Root: 0, Suffix: "sus4"}, 0, false}, // sus has no degree
+		{Chord{Root: 1, Suffix: ""}, 0, false},     // C# not in C major
 	}
 	for _, tc := range cases {
 		dc, ok := DegreeOf(cmaj, tc.chord)

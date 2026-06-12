@@ -55,7 +55,9 @@ func (m *MockOut) record(status string, ch, d1, d2 uint8) error {
 	return nil
 }
 
-func (m *MockOut) NoteOn(ch, note, vel uint8) error          { return m.record("on", ch, note, vel) }
-func (m *MockOut) NoteOff(ch, note uint8) error              { return m.record("off", ch, note, 0) }
-func (m *MockOut) Control(ch, controller, val uint8) error   { return m.record("cc", ch, controller, val) }
-func (m *MockOut) Close() error                              { return nil }
+func (m *MockOut) NoteOn(ch, note, vel uint8) error { return m.record("on", ch, note, vel) }
+func (m *MockOut) NoteOff(ch, note uint8) error     { return m.record("off", ch, note, 0) }
+func (m *MockOut) Control(ch, controller, val uint8) error {
+	return m.record("cc", ch, controller, val)
+}
+func (m *MockOut) Close() error { return nil }

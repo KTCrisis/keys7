@@ -51,6 +51,7 @@ func main() {
 	defer src.Close()
 
 	var sink session.Sink = session.NopSink{}
+	var jsonl *session.JSONLSink
 	if *logFlag != "" {
 		f, err := os.OpenFile(*logFlag, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 		if err != nil {
@@ -58,12 +59,19 @@ func main() {
 			os.Exit(1)
 		}
 		defer f.Close()
-		sink = session.NewJSONLSink(f)
+		jsonl = session.NewJSONLSink(f)
+		sink = jsonl
 	}
 
 	m := ui.New(*source, *port, key, keySrc, src.Events(), mesh.NopForwarder{}, sink, *replyFlag)
-	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
-		fmt.Fprintln(os.Stderr, "keys7:", err)
+	_, runErr := tea.NewProgram(m, tea.WithAltScreen()).Run()
+	if jsonl != nil {
+		if n, err := jsonl.Dropped(); n > 0 {
+			fmt.Fprintf(os.Stderr, "keys7: journal incomplet — %d événement(s) perdu(s), dernière erreur : %v\n", n, err)
+		}
+	}
+	if runErr != nil {
+		fmt.Fprintln(os.Stderr, "keys7:", runErr)
 		os.Exit(1)
 	}
 }

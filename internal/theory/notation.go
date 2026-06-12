@@ -23,7 +23,7 @@ var (
 // pure presentation choice, so chord/key String() methods can stay parameterless.
 var active = Letters
 
-func SetNotation(n Notation) { active = n }
+func SetNotation(n Notation)   { active = n }
 func ActiveNotation() Notation { return active }
 
 func ToggleNotation() {

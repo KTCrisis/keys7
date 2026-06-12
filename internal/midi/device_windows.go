@@ -47,9 +47,10 @@ type midiInCapsW struct {
 }
 
 type deviceSource struct {
-	ch     chan Event
-	handle uintptr
-	once   sync.Once
+	ch       chan Event
+	handle   uintptr
+	instance uintptr // registry key; removed on Close and on open failure
+	once     sync.Once
 }
 
 // The WinMM callback runs on an OS thread with no Go closure context, so we
@@ -70,8 +71,8 @@ func newDeviceSource(portMatch string) (MidiSource, error) {
 
 	regMu.Lock()
 	regNext++
-	instance := regNext
-	registry[instance] = s
+	s.instance = regNext
+	registry[s.instance] = s
 	regMu.Unlock()
 
 	var handle uintptr
@@ -80,18 +81,26 @@ func newDeviceSource(portMatch string) (MidiSource, error) {
 		uintptr(unsafe.Pointer(&handle)),
 		uintptr(idx),
 		cb,
-		instance,
+		s.instance,
 		callbackFunction,
 	); r != 0 {
+		unregister(s.instance)
 		return nil, fmt.Errorf("midiInOpen(device %d) failed: mmresult=%d", idx, r)
 	}
 	s.handle = handle
 
 	if r, _, _ := procMidiInStart.Call(handle); r != 0 {
 		procMidiInClose.Call(handle)
+		unregister(s.instance)
 		return nil, fmt.Errorf("midiInStart failed: mmresult=%d", r)
 	}
 	return s, nil
+}
+
+func unregister(instance uintptr) {
+	regMu.Lock()
+	delete(registry, instance)
+	regMu.Unlock()
 }
 
 // midiInProc is the WinMM input callback. For MIM_DATA, dwParam1 packs the short
@@ -162,6 +171,9 @@ func (s *deviceSource) Close() error {
 			procMidiInStop.Call(s.handle)
 			procMidiInClose.Call(s.handle)
 		}
+		// Unregister before closing the channel: a callback that fires after
+		// midiInStop must not find s and send on a closed channel (panic).
+		unregister(s.instance)
 		close(s.ch)
 	})
 	return nil

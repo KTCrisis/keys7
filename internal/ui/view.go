@@ -89,7 +89,7 @@ func (m Model) playingPanel(allNotes []uint8) string {
 			chordStr += highlightStyle.Render("  ✓ " + label)
 		}
 	case len(pcs) == 2:
-		chordStr = noteStyle.Render(theory.IntervalName((pcs[1]-pcs[0]+12)%12))
+		chordStr = noteStyle.Render(theory.IntervalName((pcs[1] - pcs[0] + 12) % 12))
 		if impl := theory.DyadImplications(pcs[0], pcs[1], &m.key); len(impl) > 0 {
 			chordStr += dimStyle.Render(" ⇒ ") + chordStyle.Render(symbolsJoin(impl, " "))
 		}
