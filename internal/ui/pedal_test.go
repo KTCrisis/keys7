@@ -68,7 +68,7 @@ func TestRestrikeClearsSustained(t *testing.T) {
 	ev(midi.NoteOn, 60, 70, t0)
 	ev(midi.NoteOff, 60, 0, t0) // sustained by the pedal
 	ev(midi.ControlChange, ccSustain, 0, t0.Add(time.Second))
-	ev(midi.NoteOn, 60, 70, t0.Add(2*time.Second))  // re-struck, pedal up
+	ev(midi.NoteOn, 60, 70, t0.Add(2*time.Second)) // re-struck, pedal up
 	ev(midi.NoteOff, 60, 0, t0.Add(3*time.Second)) // plain release
 
 	if got := m.sounding(); len(got) != 0 {

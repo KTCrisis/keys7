@@ -46,13 +46,13 @@ type Model struct {
 	texture     Texture   // declared playing texture (cycled with `t`)
 
 	// derived chord state, recomputed when the held notes change
-	core, melody    []uint8
-	chord           theory.Chord
-	chordOK         bool
-	prevChord       theory.Chord // the recognized chord before the current one
-	prevOK          bool
-	lastChord       theory.Chord // most recent recognized chord (persists through releases)
-	lastOK          bool
+	core, melody []uint8
+	chord        theory.Chord
+	chordOK      bool
+	prevChord    theory.Chord // the recognized chord before the current one
+	prevOK       bool
+	lastChord    theory.Chord // most recent recognized chord (persists through releases)
+	lastOK       bool
 }
 
 // detectWindow is how many recent note-ons feed key detection.

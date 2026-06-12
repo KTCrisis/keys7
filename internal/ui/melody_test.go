@@ -21,12 +21,12 @@ func TestModelLogsMelodyOnsets(t *testing.T) {
 	}
 
 	// Left hand holds C major; the right hand line sits a register above.
-	press(48, t0) // C3
-	press(52, t0) // E3
-	press(55, t0) // G3
-	press(76, t0.Add(time.Second))                        // E5 — melody
+	press(48, t0)                  // C3
+	press(52, t0)                  // E3
+	press(55, t0)                  // G3
+	press(76, t0.Add(time.Second)) // E5 — melody
 	m.apply(midi.Event{Kind: midi.NoteOff, Data1: 76, Timestamp: t0.Add(time.Second + 400*time.Millisecond)})
-	press(74, t0.Add(time.Second+500*time.Millisecond))   // D5 — melody
+	press(74, t0.Add(time.Second+500*time.Millisecond)) // D5 — melody
 
 	var got []string
 	for _, e := range sink.events {

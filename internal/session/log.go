@@ -54,20 +54,35 @@ type NopSink struct{}
 
 func (NopSink) Emit(HarmonicEvent) {}
 
-// JSONLSink appends one JSON object per line to a writer.
+// JSONLSink appends one JSON object per line to a writer. Emit never blocks
+// the model on an error; failures are counted instead, and the caller checks
+// Dropped() at shutdown — a journal that lost events must not pretend it
+// didn't (the AI layer reads it as the ground truth of the session).
 type JSONLSink struct {
-	mu sync.Mutex
-	w  io.Writer
+	mu      sync.Mutex
+	w       io.Writer
+	dropped int
+	lastErr error
 }
 
 func NewJSONLSink(w io.Writer) *JSONLSink { return &JSONLSink{w: w} }
 
 func (s *JSONLSink) Emit(e HarmonicEvent) {
 	b, err := json.Marshal(e)
-	if err != nil {
-		return
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.w.Write(append(b, '\n'))
+	if err == nil {
+		_, err = s.w.Write(append(b, '\n'))
+	}
+	if err != nil {
+		s.dropped++
+		s.lastErr = err
+	}
+}
+
+// Dropped reports how many events were lost and the last error seen.
+func (s *JSONLSink) Dropped() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.dropped, s.lastErr
 }

@@ -5,3 +5,7 @@
 # Go
 *.test
 *.out
+
+# Binaire compilé à la racine (go build ./cmd/play7)
+/play7
+/keys7
