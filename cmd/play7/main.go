@@ -8,6 +8,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -51,9 +52,25 @@ func main() {
 		defer f.Close()
 		in = f
 	}
-	seq, err := sequence.Parse(in)
+	// Accept either a JSON sequence or a Standard MIDI File, told apart by the
+	// "MThd" magic — so play7 can replay a .mid (e.g. one edited in MuseScore),
+	// running it through the same style + playback path as a JSON sequence.
+	raw, err := io.ReadAll(in)
 	if err != nil {
 		fail(err)
+	}
+	var seq sequence.Sequence
+	if len(raw) >= 4 && string(raw[:4]) == "MThd" {
+		msgs, bpm, rerr := smf.Read(bytes.NewReader(raw))
+		if rerr != nil {
+			fail(rerr)
+		}
+		seq = midiToSequence(msgs, bpm)
+	} else {
+		seq, err = sequence.Parse(bytes.NewReader(raw))
+		if err != nil {
+			fail(err)
+		}
 	}
 
 	// --export writes the straight sequence to a .mid (notation, bridge to
@@ -98,6 +115,28 @@ func main() {
 		out.Control(seq.Channel, midi.AllNotesOff, 0)
 		fail(err)
 	}
+}
+
+// midiToSequence turns parsed SMF messages into a playable sequence, so a .mid
+// flows through the same style and playback path as a JSON sequence.
+func midiToSequence(msgs []smf.Msg, bpm float64) sequence.Sequence {
+	evs := make([]sequence.Event, 0, len(msgs))
+	for _, m := range msgs {
+		at := time.Duration(m.MS * float64(time.Millisecond))
+		switch m.Status {
+		case smf.ControlChange:
+			evs = append(evs, sequence.Event{At: at, Ctrl: true, Note: m.D1, Vel: m.D2})
+		case smf.NoteOn:
+			if m.D2 > 0 {
+				evs = append(evs, sequence.Event{At: at, On: true, Note: m.D1, Vel: m.D2})
+			} else {
+				evs = append(evs, sequence.Event{At: at, On: false, Note: m.D1})
+			}
+		case smf.NoteOff:
+			evs = append(evs, sequence.Event{At: at, On: false, Note: m.D1})
+		}
+	}
+	return sequence.Sequence{Tempo: bpm, Channel: 0, Events: evs}
 }
 
 // exportMIDI writes a compiled sequence to a Standard MIDI File, carrying the

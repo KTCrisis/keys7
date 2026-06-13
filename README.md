@@ -205,6 +205,14 @@ play7 --export take.mid sequence.json
 "/mnt/c/Program Files/MuseScore 4/bin/MuseScore4.exe" -r 100 -o take.png take.mid
 ```
 
+The reverse works too: play7 **reads a `.mid`** (told from JSON by its `MThd`
+header) and replays it through the same style + playback path — so a piece
+edited in MuseScore comes straight back to the piano:
+
+```bash
+play7 --style ambient take.mid     # replay a MIDI file, humanised
+```
+
 ## Running a live session with an assistant
 
 The bridge above is just files; what makes it a *conversation* is the loop on

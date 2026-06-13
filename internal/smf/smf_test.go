@@ -90,13 +90,39 @@ func parseTrack(t *testing.T, track []byte) []ev {
 	return out
 }
 
-func readVarLen(b []byte) (uint32, int) {
-	var v uint32
-	for i, c := range b {
-		v = v<<7 | uint32(c&0x7F)
-		if c&0x80 == 0 {
-			return v, i + 1
-		}
+// TestReadRoundTrip writes messages then reads them back, asserting the notes,
+// control change, tempo and millisecond times survive the SMF round-trip.
+func TestReadRoundTrip(t *testing.T) {
+	in := []Msg{
+		{MS: 0, Status: NoteOn, D1: 60, D2: 90},
+		{MS: 0, Status: NoteOn, D1: 64, D2: 80},
+		{MS: 500, Status: ControlChange, D1: 64, D2: 127},
+		{MS: 1000, Status: NoteOff, D1: 60, D2: 0},
+		{MS: 1000, Status: NoteOff, D1: 64, D2: 0},
 	}
-	return v, len(b)
+	var buf bytes.Buffer
+	if err := Write(&buf, in, 120); err != nil {
+		t.Fatal(err)
+	}
+	got, bpm, err := Read(&buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bpm != 120 {
+		t.Errorf("bpm = %v, want 120", bpm)
+	}
+	if len(got) != len(in) {
+		t.Fatalf("got %d messages, want %d", len(got), len(in))
+	}
+	key := func(m Msg) [4]int { return [4]int{int(m.MS), int(m.Status), int(m.D1), int(m.D2)} }
+	seen := map[[4]int]int{}
+	for _, m := range got {
+		seen[key(m)]++
+	}
+	for _, m := range in {
+		if seen[key(m)] == 0 {
+			t.Errorf("message %+v missing from round-trip", m)
+		}
+		seen[key(m)]--
+	}
 }
