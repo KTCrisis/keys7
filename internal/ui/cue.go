@@ -2,32 +2,73 @@ package ui
 
 import "time"
 
-// The cue is the "your turn" gesture for the AI bridge: two taps of the cue
-// note close together. It lets the player hand the turn to the assistant
-// without leaving the piano — the assistant's loop reads the journal and only
-// answers when it sees a cue event.
+// A cue is a signalling gesture played on the lowest piano keys — below any
+// harmony register — so it never collides with musical material. Each cue is a
+// double-tap of one dedicated key; the four lowest keys of an 88-key board form
+// a "signal bar" that hands the assistant a specific intent without leaving the
+// bench. keys7 only detects and journals the gesture; what the assistant does
+// with replay / transpose / harmonise is the session protocol's business.
 
-// cueNote is A0, the lowest piano key — comfortably below any harmony register,
-// so double-tapping it is unambiguous as a gesture.
-const cueNote = 21
+// Cue is a recognised signal-bar gesture.
+type Cue int
+
+const (
+	CueNone      Cue = iota
+	CueTurn          // A0  — your turn (answer now)
+	CueReplay        // A#0 — play my last phrase back
+	CueTranspose     // B0  — transpose / move it
+	CueHarmonize     // C1  — harmonise / add voices
+)
+
+// cueKeys maps the signal-bar MIDI notes to their cue (A0, A#0, B0, C1).
+var cueKeys = map[uint8]Cue{
+	21: CueTurn,
+	22: CueReplay,
+	23: CueTranspose,
+	24: CueHarmonize,
+}
+
+func (c Cue) String() string {
+	switch c {
+	case CueTurn:
+		return "turn"
+	case CueReplay:
+		return "replay"
+	case CueTranspose:
+		return "transpose"
+	case CueHarmonize:
+		return "harmonise"
+	default:
+		return ""
+	}
+}
+
+// isCueKey reports whether a note belongs to the signal bar — excluded from
+// harmonic analysis, since it is a gesture, not a note.
+func isCueKey(note uint8) bool { _, ok := cueKeys[note]; return ok }
 
 // cueWindow is how close the two taps must be to count as a cue.
 const cueWindow = 2 * time.Second
 
-// cueDetector recognizes the double-tap. Purely time-based, so it is testable
-// without a UI or a clock.
+// cueDetector recognises a double-tap on one signal-bar key. Purely time-based,
+// so it is testable without a UI or a clock.
 type cueDetector struct {
-	last time.Time
+	lastNote uint8
+	last     time.Time
 }
 
-// Tap records a cue-note hit at t and reports whether it completes a cue. A
-// completing tap consumes the pair: a third tap starts over rather than
-// chaining cues.
-func (c *cueDetector) Tap(t time.Time) bool {
-	if !c.last.IsZero() && t.Sub(c.last) <= cueWindow {
-		c.last = time.Time{}
-		return true
+// Tap records a hit on signal-bar note `note` at t and returns the cue it
+// completes, or CueNone. A completing tap consumes the pair; a different signal
+// key, or a gap longer than the window, restarts rather than chaining.
+func (c *cueDetector) Tap(note uint8, t time.Time) Cue {
+	cue, ok := cueKeys[note]
+	if !ok {
+		return CueNone
 	}
-	c.last = t
-	return false
+	if c.lastNote == note && !c.last.IsZero() && t.Sub(c.last) <= cueWindow {
+		c.last, c.lastNote = time.Time{}, 0
+		return cue
+	}
+	c.lastNote, c.last = note, t
+	return CueNone
 }

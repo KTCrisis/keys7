@@ -95,6 +95,9 @@ r    relative key            a  auto key-detection      d  drone (bass-pinned)
 e    melody/harmony split    n  notation (letters↔solfège)
 t    texture (free/block/arpeggio — declared intent, journaled)
 x    reset (forget playing)  q  quit
+
+cues (double-tap a signal-bar key):
+A0 turn · A#0 replay · B0 transpose · C1 harmonise
 ```
 
 ## The AI bridge
@@ -121,11 +124,19 @@ journals like a held one. An assistant reads the file to know what's being playe
 it — the concrete realisation of the otherwise-dormant mesh `Forwarder` seam.
 Put the log on a path both sides can see (e.g. under `/mnt/c/…` from WSL).
 
-The **cue** is the "your turn" gesture: double-tap A0 (the lowest key) within
-2 s and keys7 logs `{"kind":"cue"}` (the header shows `cue ✓`). An assistant
-polling the journal answers only on cue — combined with play7 on the same
-piano's MIDI in, that's a full conversation without leaving the bench: you
-play, double-tap, and the answer comes back through the instrument.
+**Cues** are signalling gestures on the four lowest keys — a "signal bar" below
+any harmony register, kept out of the analysis. Double-tap one within 2 s and
+keys7 logs `{"kind":"cue","cue":"…"}` (the header shows the gesture):
+
+- **A0** — `turn`: your turn, answer now
+- **A#0** — `replay`: play my last phrase back
+- **B0** — `transpose`: move it
+- **C1** — `harmonise`: add voices
+
+keys7 only detects and journals the gesture; what the assistant does with each
+is the session protocol's business. Combined with play7 on the same piano's MIDI
+in, that's a full conversation without leaving the bench: you play, double-tap,
+and the answer comes back through the instrument.
 
 ## play7 — playing *to* the piano
 

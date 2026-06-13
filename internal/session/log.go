@@ -33,6 +33,7 @@ type HarmonicEvent struct {
 	Reg     string  `json:"reg,omitempty"`  // melody register: "high" | "low"
 	On      *bool   `json:"on,omitempty"`   // note: attack (true) or release; pedal: down or up
 	Mode    string  `json:"mode,omitempty"` // texture: "free" | "block" | "arpeggio"
+	Cue     string  `json:"cue,omitempty"`  // cue gesture: "turn" | "replay" | "transpose" | "harmonise"
 }
 
 // Stamp formats an event time: RFC3339 with milliseconds, so melody rhythm can
