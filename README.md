@@ -196,6 +196,15 @@ play7 --style darksynth --seed 7 sequence.json   # --seed makes a take reproduci
 The randomness is seeded (`--seed`, default time-based), so a seed reproduces a
 take. An explicit `pedal` in the sequence overrides a style's auto-pedal.
 
+`--export out.mid` writes the sequence to a Standard MIDI File instead of
+playing it (straight timing, no style — so it quantises into a readable score),
+carrying the sequence tempo. Engrave it with MuseScore's CLI:
+
+```bash
+play7 --export take.mid sequence.json
+"/mnt/c/Program Files/MuseScore 4/bin/MuseScore4.exe" -r 100 -o take.png take.mid
+```
+
 ## Running a live session with an assistant
 
 The bridge above is just files; what makes it a *conversation* is the loop on

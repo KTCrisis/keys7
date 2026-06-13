@@ -19,6 +19,7 @@ import (
 
 	"keys7/internal/midi"
 	"keys7/internal/sequence"
+	"keys7/internal/smf"
 )
 
 func main() {
@@ -27,6 +28,7 @@ func main() {
 	outKind := flag.String("out", "device", "MIDI output: device|mock (mock prints messages instead of playing)")
 	style := flag.String("style", "straight", "playing feel: "+strings.Join(sequence.StyleNames(), "|"))
 	seed := flag.Int64("seed", 0, "random seed for --style humanisation (0 = time-based)")
+	export := flag.String("export", "", "write the sequence to a .mid instead of playing it (straight timing, for notation)")
 	flag.Parse()
 
 	if *list {
@@ -52,6 +54,17 @@ func main() {
 	seq, err := sequence.Parse(in)
 	if err != nil {
 		fail(err)
+	}
+
+	// --export writes the straight sequence to a .mid (notation, bridge to
+	// MuseScore) and exits — no style humanisation, so the timing quantises
+	// cleanly into a readable score.
+	if *export != "" {
+		if err := exportMIDI(*export, seq); err != nil {
+			fail(err)
+		}
+		fmt.Fprintf(os.Stderr, "play7: wrote %s\n", *export)
+		return
 	}
 
 	st, ok := sequence.StyleByName(*style)
@@ -85,6 +98,29 @@ func main() {
 		out.Control(seq.Channel, midi.AllNotesOff, 0)
 		fail(err)
 	}
+}
+
+// exportMIDI writes a compiled sequence to a Standard MIDI File, carrying the
+// sequence tempo so a notation editor quantises it correctly.
+func exportMIDI(path string, seq sequence.Sequence) error {
+	msgs := make([]smf.Msg, 0, len(seq.Events))
+	for _, e := range seq.Events {
+		ms := float64(e.At.Microseconds()) / 1000.0
+		switch {
+		case e.Ctrl:
+			msgs = append(msgs, smf.Msg{MS: ms, Status: smf.ControlChange, D1: e.Note, D2: e.Vel})
+		case e.On:
+			msgs = append(msgs, smf.Msg{MS: ms, Status: smf.NoteOn, D1: e.Note, D2: e.Vel})
+		default:
+			msgs = append(msgs, smf.Msg{MS: ms, Status: smf.NoteOff, D1: e.Note, D2: 0})
+		}
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return smf.Write(f, msgs, seq.Tempo)
 }
 
 func fail(err error) {
