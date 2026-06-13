@@ -28,6 +28,13 @@ keys7 is the hub of a small machine ↔ music system (piano, Renoise, audio
 analysis, notation). See **[ECOSYSTEM.md](ECOSYSTEM.md)** for how it fits with
 play7, xrns7, score7, ReMCP and MuseScore.
 
+**What it is for, and isn't.** keys7 is a *live, harmonic* aid — for reading the
+chords, key and mode under your hands while you improvise and search at the
+keyboard, in real time. It reads harmony, not melody (a melodic line is split
+*off* so it doesn't pollute the chord, never analysed as a line). It is not a
+file analyser: to study written material, read a Renoise project with xrns7 or
+rendered audio with score7.
+
 ## Architecture
 
 Everything hangs off one interface, `midi.MidiSource`; the rest never knows
