@@ -1,7 +1,11 @@
 BINARY := keys7
 PKG := ./cmd/keys7
 
-.PHONY: build run-mock build-windows build-play7 build-play7-windows vet test clean
+.PHONY: build run-mock build-windows build-play7 build-play7-windows install-windows vet test clean
+
+# Windows deploy dir. Auto-detects the Windows user profile (no hard-coded user,
+# so this stays generic); override e.g. make install-windows WINDEST=/mnt/d/keys7.
+WINDEST ?= $(shell wslpath "$$(cmd.exe /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r')" 2>/dev/null)/Documents/keys7
 
 # Default build: mock source, pure Go, no CGO.
 build:
@@ -24,6 +28,23 @@ build-play7:
 
 build-play7-windows:
 	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o bin/play7.exe ./cmd/play7
+
+# One-shot deploy from WSL: cross-compile both binaries, copy them and the
+# launcher to the Windows side, and drop a Desktop shortcut (Windows Terminal).
+# After this, launching a session is a double-click — no PowerShell, no cd.
+install-windows: build-windows build-play7-windows
+	@mkdir -p "$(WINDEST)/sessions"
+	@# Hot-swap: a running .exe can't be overwritten on Windows, but it CAN be
+	@# renamed — so move any in-use binary aside, then copy. The stale .old is
+	@# deleted if free, else left for the live session to release when it exits.
+	@for b in keys7.exe play7.exe; do \
+	  [ -f "$(WINDEST)/$$b" ] && mv -f "$(WINDEST)/$$b" "$(WINDEST)/$$b.old" 2>/dev/null || true; \
+	  cp "bin/$$b" "$(WINDEST)/$$b"; \
+	  rm -f "$(WINDEST)/$$b.old" 2>/dev/null || true; \
+	done
+	cp scripts/keys7.ps1 "$(WINDEST)/"
+	@echo "binaries + launcher -> $(WINDEST)"
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w scripts/install-shortcut.ps1)" -InstallDir "$$(wslpath -w '$(WINDEST)')"
 
 vet:
 	go vet ./...

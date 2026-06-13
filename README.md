@@ -54,6 +54,7 @@ CGO, no RtMidi, no third-party MIDI module.
 make run-mock            # synthetic source — works anywhere, incl. WSL
 make build               # pure-Go build (mock), no CGO
 make build-windows       # cross-compiles bin/keys7.exe from WSL, no toolchain
+make install-windows     # build + deploy to Windows + Desktop shortcut (from WSL)
 make test                # theory + midi + session tests
 ```
 
@@ -63,6 +64,16 @@ exclusive):
 ```
 keys7.exe --source=device --key auto --log "C:\…\session.jsonl"
 ```
+
+**One-click launch.** `make install-windows` (run from WSL) cross-compiles
+`keys7.exe` + `play7.exe`, copies them with `scripts/keys7.ps1` to
+`%USERPROFILE%\Documents\keys7\`, and drops a **`keys7` shortcut on the
+Desktop**. Double-clicking it opens a session in a PowerShell console: device
+source, auto key, and a fresh timestamped journal under `sessions\` each run
+(the launcher prints that journal's WSL path for the assistant's `watch-cue.sh`).
+The deploy hot-swaps binaries, so it works even while a session is running
+(a running `.exe` is renamed aside, not overwritten). Override the target dir
+with `WINDEST=…`.
 
 - `--key` : `C`, `Am`, `F#m`, … · `auto` (infer) · `drone` (pin to bass)
 - `--notation` : `letters` (C D E) · `solfege` (Do Ré Mi)
