@@ -169,6 +169,33 @@ channel 1, velocity 80. `--out=mock` prints the messages instead of playing
 (the WSL audition mode); Ctrl-C sends All Notes Off before exiting so the
 piano never rings on.
 
+A step can also move the **sustain pedal** with `"pedal": "down"` or `"up"`
+(CC64 at the step's onset, ordered before the chord so it catches it):
+
+```json
+{"steps": [{"notes": ["C3","E3","G3"], "beats": 4, "pedal": "down"}, {"beats": 0, "pedal": "up"}]}
+```
+
+### Playing styles
+
+`--style` applies a *feel* — humanisation, articulation and pedalling — so play7
+doesn't sound mechanical. `straight` (default) is the identity; the others
+loosen timing, roll chords, bend durations, vary velocity, and (ambient /
+orchestral) sustain each chord automatically:
+
+```bash
+play7 --style ambient sequence.json
+play7 --style darksynth --seed 7 sequence.json   # --seed makes a take reproducible
+```
+
+| `straight` | exact, plaqué, no pedal — byte-for-byte the parsed sequence |
+| `ambient` | soft timing, rolled chords, legato, auto-pedal, softened velocity |
+| `orchestral` | wider dynamics with breath, discreet rolls, legato, auto-pedal |
+| `darksynth` | tight, plaqué, staccato, no pedal, marked steady velocity |
+
+The randomness is seeded (`--seed`, default time-based), so a seed reproduces a
+take. An explicit `pedal` in the sequence overrides a style's auto-pedal.
+
 ## Running a live session with an assistant
 
 The bridge above is just files; what makes it a *conversation* is the loop on
