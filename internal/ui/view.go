@@ -97,7 +97,7 @@ func (m Model) statusLine() string {
 		parts = append(parts, warnStyle.Render(m.texture.String()))
 	}
 	if !m.cuedAt.IsZero() {
-		parts = append(parts, highlightStyle.Render("cue ✓ "+m.cuedAt.Format("15:04:05")))
+		parts = append(parts, highlightStyle.Render("cue "+m.lastCue.String()+" ✓ "+m.cuedAt.Format("15:04:05")))
 	}
 	return strings.Join(parts, dimStyle.Render(" · "))
 }
@@ -125,6 +125,13 @@ func (m Model) footer() string {
 		labelStyle.Render("gamme ") + join(hint("←/→", "tonic"), hint("m", "mode"), hint("r", "relative")),
 		labelStyle.Render("jeu   ") + join(hint("e", "split"), hint("t", "texture"), hint("n", "notation")),
 		labelStyle.Render("sess  ") + join(hint("a", "auto"), hint("d", "drone"), hint("x", "reset"), hint("q", "quit")),
+		// the signal bar: double-tap one of the four lowest keys to cue the assistant
+		labelStyle.Render("cue   ") + join(
+			hint(theory.NoteName(21), "turn"),
+			hint(theory.NoteName(22), "replay"),
+			hint(theory.NoteName(23), "transpose"),
+			hint(theory.NoteName(24), "harmonise"),
+		),
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }

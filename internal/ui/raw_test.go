@@ -21,7 +21,7 @@ func TestRawCapture(t *testing.T) {
 	m.apply(midi.Event{Kind: midi.ControlChange, Data1: 64, Data2: 127, Timestamp: t0.Add(100 * time.Millisecond)})
 	m.apply(midi.Event{Kind: midi.NoteOff, Data1: 60, Timestamp: t0.Add(200 * time.Millisecond)})
 	m.apply(midi.Event{Kind: midi.ControlChange, Data1: 64, Data2: 0, Timestamp: t0.Add(300 * time.Millisecond)})
-	m.apply(midi.Event{Kind: midi.NoteOn, Data1: cueNote, Data2: 70, Timestamp: t0.Add(time.Second)})
+	m.apply(midi.Event{Kind: midi.NoteOn, Data1: 21, Data2: 70, Timestamp: t0.Add(time.Second)}) // A0 = signal key, excluded
 
 	type raw struct {
 		kind string

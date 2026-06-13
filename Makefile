@@ -1,7 +1,7 @@
 BINARY := keys7
 PKG := ./cmd/keys7
 
-.PHONY: build run-mock build-windows build-play7 build-play7-windows install-windows vet test clean
+.PHONY: build run-mock build-windows build-play7 build-play7-windows build-export7 install-windows vet test clean
 
 # Windows deploy dir. Auto-detects the Windows user profile (no hard-coded user,
 # so this stays generic); override e.g. make install-windows WINDEST=/mnt/d/keys7.
@@ -28,6 +28,11 @@ build-play7:
 
 build-play7-windows:
 	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o bin/play7.exe ./cmd/play7
+
+# export7: turn a session journal into a .mid (bridge back to Renoise/MuseScore).
+# Runs in WSL, reading the journal from the Windows side under /mnt/c.
+build-export7:
+	go build -o bin/export7 ./cmd/export7
 
 # One-shot deploy from WSL: cross-compile both binaries, copy them and the
 # launcher to the Windows side, and drop a Desktop shortcut (Windows Terminal).

@@ -49,6 +49,7 @@ type Model struct {
 	closed      bool
 	cue         cueDetector
 	cuedAt      time.Time // last completed cue, for the header badge
+	lastCue     Cue       // which gesture it was
 	replyPath   string    // assistant reply file (--reply); empty = no panel
 	reply       string    // last content read from it
 	texture     Texture   // declared playing texture (cycled with `t`)
@@ -229,15 +230,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // apply folds one event into the view state.
 func (m *Model) apply(ev midi.Event) {
+	// Signal-bar keys are gestures, not music: detect the cue, journal it, and
+	// keep them out of the harmonic state entirely (no held note, no analysis,
+	// no journal note layer).
+	if ev.Kind != midi.ControlChange && isCueKey(ev.Data1) {
+		if ev.Kind == midi.NoteOn && ev.Data2 > 0 {
+			if cue := m.cue.Tap(ev.Data1, ev.Timestamp); cue != CueNone {
+				m.cuedAt, m.lastCue = ev.Timestamp, cue
+				if m.sink != nil {
+					m.sink.Emit(session.HarmonicEvent{Time: session.Stamp(time.Now()), Kind: "cue", Cue: cue.String()})
+				}
+			}
+		}
+		return
+	}
 	m.logRaw(ev)
 	switch {
 	case ev.Kind == midi.NoteOn && ev.Data2 > 0:
-		if ev.Data1 == cueNote && m.cue.Tap(ev.Timestamp) {
-			m.cuedAt = ev.Timestamp
-			if m.sink != nil {
-				m.sink.Emit(session.HarmonicEvent{Time: session.Stamp(time.Now()), Kind: "cue"})
-			}
-		}
 		m.held[ev.Data1] = true
 		delete(m.sustained, ev.Data1) // re-struck: physically held again
 		m.recentPCs = append(m.recentPCs, ev.Data1%12)
@@ -283,8 +292,8 @@ func (m *Model) apply(ev midi.Event) {
 // easy once releases and accumulation are visible. Cue-note taps stay out:
 // they are signalling, not music.
 func (m *Model) logRaw(ev midi.Event) {
-	if m.sink == nil || (ev.Data1 == cueNote && ev.Kind != midi.ControlChange) {
-		return
+	if m.sink == nil {
+		return // signal-bar keys are filtered upstream in apply
 	}
 	switch {
 	case ev.Kind == midi.NoteOn && ev.Data2 > 0:
@@ -319,7 +328,7 @@ func (m *Model) logRaw(ev midi.Event) {
 // melody event when a bass is added late under a held chord — context (a
 // single low onset vs a moving line) disambiguates in the journal.
 func (m *Model) logMelodyOnset(ev midi.Event, wasChord bool, prevBottom uint8) {
-	if m.sink == nil || !m.splitMelody || ev.Kind != midi.NoteOn || ev.Data2 == 0 || ev.Data1 == cueNote {
+	if m.sink == nil || !m.splitMelody || ev.Kind != midi.NoteOn || ev.Data2 == 0 {
 		return
 	}
 	reg := ""

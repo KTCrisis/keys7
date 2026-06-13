@@ -10,7 +10,9 @@ that listens and suggests:
 - **Chords** — triads through 13ths, fifth-less voicings, inversions as slash
   chords, dyads named with the harmonies they imply.
 - **Key** — fixed, **auto-detected** from playing (Krumhansl-Schmuckler), or
-  **drone** (tonic pinned to the bass, for pedal/modal playing).
+  **drone** (tonic pinned to the bass, for pedal/modal playing). In drone mode
+  the colour over the bass names the mode — the seven diatonic modes (ionian
+  through locrian), read from their characteristic tones, not just major/minor.
 - **Suggestions** — the diatonic palette with the current degree lit, cadence
   moves, neighbouring keys, and secondary dominants; a chord you play that
   fulfils a suggestion lights up.
@@ -30,6 +32,7 @@ where events come from.
 ```
 cmd/keys7/main.go     entry; flags --source --port --key --notation --log
 cmd/play7/main.go     output twin: plays a JSON sequence on a MIDI out device
+cmd/export7/main.go   transcribe a session journal (JSONL) into a .mid
 internal/midi/        source/output interfaces + events
   device_windows.go     //go:build windows  — WinMM input, pure Go (no CGO)
   device_other.go       //go:build !windows — clear error; use mock
@@ -41,6 +44,7 @@ internal/theory/      pure pitch math: chords, dyads, keys/modes, cadences,
 internal/sequence/    JSON sequence parsing + scheduling (pure, like theory)
 internal/ui/          Bubble Tea model + view (panels)
 internal/session/     harmonic-event log (the AI bridge)
+internal/smf/         Standard MIDI File writer (pure Go), for export7
 internal/mesh/        Forwarder seam (no-op; real-time transport later)
 ```
 
@@ -91,6 +95,9 @@ r    relative key            a  auto key-detection      d  drone (bass-pinned)
 e    melody/harmony split    n  notation (letters↔solfège)
 t    texture (free/block/arpeggio — declared intent, journaled)
 x    reset (forget playing)  q  quit
+
+cues (double-tap a signal-bar key):
+A0 turn · A#0 replay · B0 transpose · C1 harmonise
 ```
 
 ## The AI bridge
@@ -117,11 +124,19 @@ journals like a held one. An assistant reads the file to know what's being playe
 it — the concrete realisation of the otherwise-dormant mesh `Forwarder` seam.
 Put the log on a path both sides can see (e.g. under `/mnt/c/…` from WSL).
 
-The **cue** is the "your turn" gesture: double-tap A0 (the lowest key) within
-2 s and keys7 logs `{"kind":"cue"}` (the header shows `cue ✓`). An assistant
-polling the journal answers only on cue — combined with play7 on the same
-piano's MIDI in, that's a full conversation without leaving the bench: you
-play, double-tap, and the answer comes back through the instrument.
+**Cues** are signalling gestures on the four lowest keys — a "signal bar" below
+any harmony register, kept out of the analysis. Double-tap one within 2 s and
+keys7 logs `{"kind":"cue","cue":"…"}` (the header shows the gesture):
+
+- **A0** — `turn`: your turn, answer now
+- **A#0** — `replay`: play my last phrase back
+- **B0** — `transpose`: move it
+- **C1** — `harmonise`: add voices
+
+keys7 only detects and journals the gesture; what the assistant does with each
+is the session protocol's business. Combined with play7 on the same piano's MIDI
+in, that's a full conversation without leaving the bench: you play, double-tap,
+and the answer comes back through the instrument.
 
 ## play7 — playing *to* the piano
 
@@ -200,6 +215,22 @@ starts from one phrase. The loop it describes:
 The player's side of the protocol: play freely (pedal included), `t` to
 declare texture, double-tap A0 to hand the turn over.
 
+## Exporting a session
+
+A journal is a faithful capture, so it transcribes straight to a `.mid` —
+editable in Renoise, MuseScore, any DAW. Run `export7` from WSL (it reads the
+journal on the Windows side under `/mnt/c`):
+
+```bash
+make build-export7
+bin/export7 /mnt/c/Users/…/keys7/sessions/current.jsonl   # -> current.mid
+bin/export7 -bpm 72 -o take.mid session.jsonl
+```
+
+Every `note` attack/release and `pedal` move becomes a MIDI event at its
+recorded millisecond, with velocity — no re-quantisation. `-bpm` only sets the
+tempo meta; absolute timing is preserved regardless.
+
 ## Cross-platform notes
 
 - The P-125 is USB-MIDI **on Windows**; WSL doesn't see USB-MIDI natively, so
@@ -214,6 +245,4 @@ declare texture, double-tap A0 to hand the turn over.
 
 - Real-time AI over the mesh (SSE/MCP, "like OBS") instead of the file pull, with
   style-aware coaching drawing on flux7-memory and the Renoise analyses corpus.
-- Richer drone/modal detection (distinguish Dorian, Phrygian, … not just
-  major/minor by the third).
 - Packaging / a tagged release.
