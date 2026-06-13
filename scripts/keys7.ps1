@@ -19,20 +19,10 @@ param(
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSCommandPath
 
-# Prefer Windows Terminal: relaunch into it once (WT renders the TUI's colours
-# better than the legacy console), then close this bootstrap console. Guarded by
-# WT_SESSION so the in-WT run falls through and actually starts keys7.
-if (-not $env:WT_SESSION) {
-    $wt = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\wt.exe"
-    if (Test-Path $wt) {
-        $fwd = @("-NoExit", "-ExecutionPolicy", "Bypass", "-File", $PSCommandPath, "-Key", $Key, "-Notation", $Notation)
-        if ($Port) { $fwd += @("-Port", $Port) }
-        Start-Process -FilePath $wt -ArgumentList (@("powershell.exe") + $fwd)
-        Stop-Process -Id $PID   # close the bootstrap console (overrides -NoExit)
-        return
-    }
-}
-
+# Runs in the PowerShell console the shortcut opens - it renders the TUI's
+# ANSI/256-colour output fine. (An earlier auto-relaunch into Windows Terminal
+# was dropped: the wt.exe execution alias can't be started reliably from a
+# script. To use WT, just run this .ps1 from a WT tab.)
 $exe = Join-Path $root "keys7.exe"
 if (-not (Test-Path $exe)) {
     throw "keys7.exe not found next to this script ($root). Run 'make install-windows' from the repo."

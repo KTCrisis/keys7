@@ -68,8 +68,8 @@ keys7.exe --source=device --key auto --log "C:\…\session.jsonl"
 **One-click launch.** `make install-windows` (run from WSL) cross-compiles
 `keys7.exe` + `play7.exe`, copies them with `scripts/keys7.ps1` to
 `%USERPROFILE%\Documents\keys7\`, and drops a **`keys7` shortcut on the
-Desktop** (it prefers Windows Terminal, falling back to the console).
-Double-clicking it opens a session: device source, auto key, and a **fixed-path
+Desktop**. Double-clicking it opens a session in a PowerShell console: device
+source, auto key, and a **fixed-path
 journal** at `sessions\current.jsonl` — the previous session is rotated to a
 timestamped archive at launch, so the assistant side always follows one stable
 path (the launcher prints its WSL path for `watch-cue.sh`). The deploy hot-swaps
