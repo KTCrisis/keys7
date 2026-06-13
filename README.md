@@ -289,8 +289,8 @@ tempo meta; absolute timing is preserved regardless.
   class-compliant device; `--port` matches by name, else the first input is
   used). The P-125 is just the device it was developed and validated on.
 
-## Roadmap (v2)
+## Roadmap
 
-- Real-time AI over the mesh (SSE/MCP, "like OBS") instead of the file pull, with
-  style-aware coaching drawing on flux7-memory and the Renoise analyses corpus.
-- Packaging / a tagged release.
+The system-wide roadmap lives in **[ECOSYSTEM.md](ECOSYSTEM.md#roadmap)** —
+near-term gaps (play7 arpeggiator, `xrns7 --no-fx`, multi-track MIDI), mid-term
+consistency, and the v2 leap (keys7 real-time over the mesh).

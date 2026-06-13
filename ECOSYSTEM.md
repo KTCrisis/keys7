@@ -83,14 +83,35 @@ Two deliberate complements:
 - **ReMCP writes into Renoise; xrns7 reads out of it** — the two directions of
   the DAW bridge.
 
-## Known seams / TODO
+## Roadmap
 
-- `xrns7 play` *prints* a play7 sequence — it doesn't play (pipe it to play7).
-  The name is ambiguous; `xrns7 seq` would be clearer.
-- Harmonic theory exists in both keys7 (Go, symbolic) and score7 (Python,
-  audio): unavoidable across the language/domain split, but there is no single
-  source of truth for chord conventions.
-- **play7 arpeggiator** — to fill xrns7's arp gap symbolically (re-arpeggiate a
-  held chord). Planned.
-- **SMF type-1 multi-track export** — one MIDI track per voice, so MuseScore
-  lays melody / chords / bass on separate staves. Planned.
+### Near term — close today's gaps
+
+1. **play7 arpeggiator** — re-arpeggiate a held chord (`up`/`down`/`updown`,
+   rate, octave span). The #1 gap: a piano reduction loses the arpeggiated lines
+   that live in VST arps, absent from the `.xrns`.
+2. **xrns7 `--no-fx`** — drop trigger/effect tracks (the `fx?` hint already
+   shows in `info`); completes the melodic sieve.
+3. **SMF type-1 multi-track export** — one MIDI track per voice, so MuseScore
+   lays melody / chords / bass on separate staves.
+
+### Mid term — consistency & complement
+
+4. **Rename `xrns7 play` → `seq`** — it emits a sequence, it doesn't play; the
+   one naming inconsistency in the system.
+5. **Arp bridge via score7** — transcribe the rendered audio to recover what
+   xrns7 can't read (VST-internal arpeggiators), realising the xrns7 ↔ score7
+   complement.
+
+### Long term — vision
+
+6. **keys7 real-time over the mesh** (SSE/MCP, "like OBS") instead of the file
+   pull — the v2 leap, with style-aware coaching from flux7-memory and the
+   Renoise analyses corpus.
+7. **Packaging / tagged releases** across the tools.
+
+### Standing note (not a TODO)
+
+Harmonic theory lives in both keys7 (Go, symbolic) and score7 (Python, audio) —
+unavoidable across the language/domain split; there is no single source of truth
+for chord conventions.
