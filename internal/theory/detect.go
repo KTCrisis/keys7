@@ -46,26 +46,50 @@ func DetectKey(pcs []uint8) (Key, float64, bool) {
 	return best, bestR, true
 }
 
-// ModeOverTonic picks Major or NaturalMinor for a FIXED tonic, by whether the
-// major or minor third above it is more present in the notes. This is the right
-// model for drone/pedal playing: the bass is the centre, and the third sounded
-// over it colours the mode — no relative-key flicker, because the tonic is
-// pinned rather than inferred.
+// ModeOverTonic names the mode for a FIXED tonic by reading the characteristic
+// tones sounded above it — the right model for drone/pedal playing, where the
+// bass is the centre and the colour over it (not a relative key) names the
+// mode. The third splits major (ionian/lydian/mixolydian) from minor
+// (dorian/phrygian/aeolian/locrian/harmonic/melodic); the distinguishing degree
+// then picks within each family, falling back to ionian/aeolian when nothing
+// distinctive is sounded.
 func ModeOverTonic(pcs []uint8, tonic uint8) Mode {
-	maj3, min3 := (tonic+4)%12, (tonic+3)%12
-	var maj, min int
-	for _, pc := range pcs {
-		switch pc % 12 {
-		case maj3:
-			maj++
-		case min3:
-			min++
+	has := func(semi uint8) bool {
+		want := (tonic + semi) % 12
+		for _, pc := range pcs {
+			if pc%12 == want {
+				return true
+			}
+		}
+		return false
+	}
+
+	if has(4) { // major third
+		switch {
+		case has(6) && !has(5): // raised 4th, no natural 4th
+			return Lydian
+		case has(10): // flat 7th
+			return Mixolydian
+		default:
+			return Major // ionian
 		}
 	}
-	if min > maj {
-		return NaturalMinor
+	// minor third (or no third sounded — defaults read as aeolian)
+	switch {
+	case has(1): // flat 2nd
+		return Phrygian
+	case has(6) && !has(7): // diminished 5th, no perfect 5th
+		return Locrian
+	case has(11): // raised 7th: harmonic (flat 6th) or melodic (natural 6th)
+		if has(9) {
+			return MelodicMinor
+		}
+		return HarmonicMinor
+	case has(9): // natural 6th over a minor third
+		return Dorian
+	default:
+		return NaturalMinor // aeolian
 	}
-	return Major
 }
 
 func pearson(a, b []float64) float64 {

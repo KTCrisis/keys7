@@ -10,7 +10,9 @@ that listens and suggests:
 - **Chords** — triads through 13ths, fifth-less voicings, inversions as slash
   chords, dyads named with the harmonies they imply.
 - **Key** — fixed, **auto-detected** from playing (Krumhansl-Schmuckler), or
-  **drone** (tonic pinned to the bass, for pedal/modal playing).
+  **drone** (tonic pinned to the bass, for pedal/modal playing). In drone mode
+  the colour over the bass names the mode — the seven diatonic modes (ionian
+  through locrian), read from their characteristic tones, not just major/minor.
 - **Suggestions** — the diatonic palette with the current degree lit, cadence
   moves, neighbouring keys, and secondary dominants; a chord you play that
   fulfils a suggestion lights up.
@@ -232,6 +234,4 @@ tempo meta; absolute timing is preserved regardless.
 
 - Real-time AI over the mesh (SSE/MCP, "like OBS") instead of the file pull, with
   style-aware coaching drawing on flux7-memory and the Renoise analyses corpus.
-- Richer drone/modal detection (distinguish Dorian, Phrygian, … not just
-  major/minor by the third).
 - Packaging / a tagged release.

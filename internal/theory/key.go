@@ -12,10 +12,18 @@ import (
 type Mode int
 
 const (
-	Major Mode = iota
-	NaturalMinor
+	Major        Mode = iota // Ionian
+	NaturalMinor             // Aeolian
 	HarmonicMinor
 	MelodicMinor
+	// The remaining diatonic (church) modes. Surfaced by drone-mode detection
+	// (ModeOverTonic), where the bass is pinned and the colour over it names the
+	// mode — the right model for the modal/pedal playing they suit.
+	Dorian
+	Phrygian
+	Lydian
+	Mixolydian
+	Locrian
 )
 
 func (m Mode) String() string {
@@ -26,13 +34,25 @@ func (m Mode) String() string {
 		return "harmonic minor"
 	case MelodicMinor:
 		return "melodic minor"
+	case Dorian:
+		return "dorian"
+	case Phrygian:
+		return "phrygian"
+	case Lydian:
+		return "lydian"
+	case Mixolydian:
+		return "mixolydian"
+	case Locrian:
+		return "locrian"
 	default:
 		return "major"
 	}
 }
 
-// IsMinor reports whether the mode is any minor flavour.
-func (m Mode) IsMinor() bool { return m != Major }
+// IsMinor reports whether the mode has a minor third (degree 3 a minor third
+// above the tonic) — true for the aeolian/dorian/phrygian/locrian family and
+// the harmonic/melodic minors, false for ionian/lydian/mixolydian.
+func (m Mode) IsMinor() bool { return scaleSteps[m][2] == 3 }
 
 // minorModes is the cycle order used by the UI's mode toggle.
 var minorModes = []Mode{Major, NaturalMinor, HarmonicMinor, MelodicMinor}
@@ -63,6 +83,11 @@ var scaleSteps = map[Mode][7]uint8{
 	NaturalMinor:  {0, 2, 3, 5, 7, 8, 10},
 	HarmonicMinor: {0, 2, 3, 5, 7, 8, 11}, // raised 7th
 	MelodicMinor:  {0, 2, 3, 5, 7, 9, 11}, // raised 6th and 7th (ascending)
+	Dorian:        {0, 2, 3, 5, 7, 9, 10}, // minor with a natural 6th
+	Phrygian:      {0, 1, 3, 5, 7, 8, 10}, // minor with a flat 2nd
+	Lydian:        {0, 2, 4, 6, 7, 9, 11}, // major with a raised 4th
+	Mixolydian:    {0, 2, 4, 5, 7, 9, 10}, // major with a flat 7th
+	Locrian:       {0, 1, 3, 5, 6, 8, 10}, // minor with flat 2nd and flat 5th
 }
 
 func (k Key) scalePCs() [7]uint8 {
@@ -113,12 +138,21 @@ func (f Function) String() string {
 	}
 }
 
+// functions assigns each scale degree a Riemann-simplified role. Functional
+// harmony is loose in the church modes, so the minor-third modes reuse the
+// natural-minor mapping and the major-third modes the major one — enough to
+// colour the degree roles in the harmony panel.
 var functions = map[Mode][7]Function{
 	//                I/i    ii     iii    IV     V      vi     vii
 	Major:         {Tonic, Subdominant, Tonic, Subdominant, Dominant, Tonic, Dominant},
 	NaturalMinor:  {Tonic, Subdominant, Tonic, Subdominant, Dominant, Subdominant, Dominant},
 	HarmonicMinor: {Tonic, Subdominant, Tonic, Subdominant, Dominant, Subdominant, Dominant},
 	MelodicMinor:  {Tonic, Subdominant, Tonic, Subdominant, Dominant, Subdominant, Dominant},
+	Dorian:        {Tonic, Subdominant, Tonic, Subdominant, Dominant, Subdominant, Dominant},
+	Phrygian:      {Tonic, Subdominant, Tonic, Subdominant, Dominant, Subdominant, Dominant},
+	Locrian:       {Tonic, Subdominant, Tonic, Subdominant, Dominant, Subdominant, Dominant},
+	Lydian:        {Tonic, Subdominant, Tonic, Subdominant, Dominant, Tonic, Dominant},
+	Mixolydian:    {Tonic, Subdominant, Tonic, Subdominant, Dominant, Tonic, Dominant},
 }
 
 // DegreeChord is one diatonic chord: its scale degree, roman numeral, the chord
