@@ -170,6 +170,9 @@ func (m Model) playingPanel(allNotes []uint8) string {
 	case m.chordOK:
 		other := theory.ActiveNotation().Other()
 		chordStr = chordBigStyle.Render(m.chord.String()) + dimStyle.Render("  "+m.chord.StringIn(other))
+		if dc, ok := theory.DegreeOf(m.key, m.chord); ok {
+			chordStr += dimStyle.Render("  · "+dc.Roman+" ") + labelStyle.Render(theory.DegreeName(m.key, dc.Degree))
+		}
 		if label, ok := m.fulfilledSuggestion(); ok {
 			chordStr += highlightStyle.Render("  ✓ " + label)
 		}

@@ -212,6 +212,32 @@ func roman(deg int, suffix string) string {
 	return n
 }
 
+// degreeNames are the French names of the scale degrees 1-7. The 7th is
+// resolved per key by DegreeName (sensible vs sous-tonique), so the slot here is
+// a placeholder.
+var degreeNames = [7]string{
+	"tonique", "sus-tonique", "médiante", "sous-dominante",
+	"dominante", "sus-dominante", "",
+}
+
+// DegreeName returns the French name of a scale degree (1-7) in the key. The
+// 7th degree is "sensible" when it sits a semitone below the tonic (major,
+// harmonic minor) and "sous-tonique" when a whole tone below (natural minor and
+// the flat-7 modes) — the distinction matters: a sous-tonique has no leading-
+// tone pull toward the tonic.
+func DegreeName(k Key, degree int) string {
+	if degree < 1 || degree > 7 {
+		return ""
+	}
+	if degree == 7 {
+		if k.scalePCs()[6] == (k.Tonic+11)%12 {
+			return "sensible"
+		}
+		return "sous-tonique"
+	}
+	return degreeNames[degree-1]
+}
+
 // DegreeOf finds which diatonic degree a chord occupies, matched by root and
 // triad quality. Sevenths and sixths match their underlying triad (so G7 is the
 // V of C); suspended chords have no third and don't match a degree.
