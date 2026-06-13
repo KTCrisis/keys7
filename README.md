@@ -24,6 +24,10 @@ that listens and suggests:
 The theory is deterministic and local. The AI layer reads the log (today) and
 will move onto the mesh (real-time) later.
 
+keys7 is the hub of a small machine ↔ music system (piano, Renoise, audio
+analysis, notation). See **[ECOSYSTEM.md](ECOSYSTEM.md)** for how it fits with
+play7, xrns7, score7, ReMCP and MuseScore.
+
 ## Architecture
 
 Everything hangs off one interface, `midi.MidiSource`; the rest never knows
