@@ -74,6 +74,25 @@ func (k Key) scalePCs() [7]uint8 {
 	return pcs
 }
 
+// ScalePCs returns the seven pitch classes of the key's scale, tonic first —
+// the public view of the scale, for the UI to show the notes being chosen and
+// flag out-of-scale (accidental) ones.
+func (k Key) ScalePCs() []uint8 {
+	pcs := k.scalePCs()
+	return pcs[:]
+}
+
+// InScale reports whether a MIDI note (or pitch class) belongs to the key's scale.
+func (k Key) InScale(note uint8) bool {
+	pc := note % 12
+	for _, s := range k.scalePCs() {
+		if s == pc {
+			return true
+		}
+	}
+	return false
+}
+
 // Function is a chord's harmonic role (Riemann-simplified).
 type Function int
 

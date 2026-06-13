@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -26,36 +27,63 @@ var (
 )
 
 func (m Model) View() string {
-	allNotes := m.sounding()
+	full, half := m.layout()
 
 	top := lipgloss.JoinHorizontal(
 		lipgloss.Top,
-		panelStyle.Width(32).MarginRight(2).Render(m.playingPanel(allNotes)),
-		panelStyle.Width(32).Render(m.keyPanel()),
+		panelStyle.Width(half).MarginRight(2).Render(m.playingPanel(m.sounding())),
+		panelStyle.Width(half).Render(m.keyPanel()),
 	)
-	harmony := panelStyle.Width(68).Render(m.harmonyPanel())
-
-	footer := dimStyle.Render("q quit · x reset · a auto · d drone · m mode · r relative · e split · n notation · t texture · ←/→ tonic")
+	harmony := panelStyle.Width(full).Render(m.harmonyPanel())
 
 	parts := []string{m.header(), "", top, "", harmony, ""}
 	if m.replyPath != "" {
-		parts = append(parts, panelStyle.Width(68).Render(m.replyPanel()), "")
+		parts = append(parts, panelStyle.Width(full).Render(m.replyPanel()), "")
 	}
-	parts = append(parts, m.recentLine(), "", footer)
+	parts = append(parts, m.recentLine(), "", m.footer())
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 
-// replyPanel shows the assistant's reply file content (the journal's return
-// channel). lipgloss wraps to the style width, so a few lines of prose fit.
-func (m Model) replyPanel() string {
-	body := dimStyle.Render("waiting for a reply…")
-	if m.reply != "" {
-		body = noteStyle.Width(64).Render(m.reply)
+// layout derives panel content widths from the terminal size, falling back to
+// the historical fixed layout before the first WindowSizeMsg arrives. full is
+// the wide panels (harmony, reply); half is each of the two top panels. The
+// arithmetic keeps the two top panels aligned under the harmony panel:
+// (half+4)*2 + 2-gap == full+4, i.e. half = (full-6)/2.
+func (m Model) layout() (full, half int) {
+	w := m.width
+	if w <= 0 {
+		w = 74 // pre-resize default: reproduces the old 68/31 layout
 	}
-	return panelTitleStyle.Render("assistant") + "\n" + body
+	full = w - 6 // borders + padding + a small right margin
+	if full < 60 {
+		full = 60
+	}
+	if full > 120 {
+		full = 120 // don't sprawl on ultra-wide terminals
+	}
+	half = (full - 6) / 2
+	return full, half
 }
 
+// header is the logo monogram (a boxed 7, in the flux7 line-art spirit) beside
+// the title and a live status line.
 func (m Model) header() string {
+	logo := lipgloss.JoinVertical(lipgloss.Left,
+		dimStyle.Render("╭───╮"),
+		dimStyle.Render("│  ")+highlightStyle.Render("7")+dimStyle.Render("│"),
+		dimStyle.Render("╰───╯"),
+	)
+	right := lipgloss.JoinVertical(lipgloss.Left,
+		"",
+		titleStyle.Render("keys7")+"   "+m.statusLine(),
+		dimStyle.Render("live harmony"),
+	)
+	return lipgloss.JoinHorizontal(lipgloss.Top, logo, "  ", right)
+}
+
+// statusLine reports the source, listening state, MIDI liveness, declared
+// texture and the last cue — everything that changes during a session.
+func (m Model) statusLine() string {
 	status := okStyle.Render("listening")
 	if m.closed {
 		status = warnStyle.Render("source closed")
@@ -64,15 +92,65 @@ func (m Model) header() string {
 	if m.port != "" {
 		src += " " + m.port
 	}
-	line := titleStyle.Render("keys7") + dimStyle.Render("  ·  live harmony") +
-		"      " + labelStyle.Render(src) + dimStyle.Render(" · ") + status
+	parts := []string{labelStyle.Render(src), status, m.midiDot()}
 	if m.texture != TextureFree {
-		line += dimStyle.Render(" · ") + warnStyle.Render(m.texture.String())
+		parts = append(parts, warnStyle.Render(m.texture.String()))
 	}
 	if !m.cuedAt.IsZero() {
-		line += dimStyle.Render(" · ") + highlightStyle.Render("cue ✓ "+m.cuedAt.Format("15:04:05"))
+		parts = append(parts, highlightStyle.Render("cue ✓ "+m.cuedAt.Format("15:04:05")))
 	}
-	return line
+	return strings.Join(parts, dimStyle.Render(" · "))
+}
+
+// midiDot answers "is the piano being heard?" at a glance: a lit dot the instant
+// a note lands, then a quiet seconds-since counter (refreshed by the heartbeat).
+func (m Model) midiDot() string {
+	if m.lastNoteAt.IsZero() {
+		return dimStyle.Render("○ idle")
+	}
+	if time.Since(m.lastNoteAt) < 300*time.Millisecond {
+		return okStyle.Render("● live")
+	}
+	return dimStyle.Render(fmt.Sprintf("○ %.0fs", time.Since(m.lastNoteAt).Seconds()))
+}
+
+// footer groups the key bindings by concern (scale / play / session) so the
+// long flat strip reads as three short, scannable rows.
+func (m Model) footer() string {
+	hint := func(key, desc string) string {
+		return highlightStyle.Render(key) + " " + dimStyle.Render(desc)
+	}
+	join := func(hs ...string) string { return strings.Join(hs, dimStyle.Render(" · ")) }
+	rows := []string{
+		labelStyle.Render("gamme ") + join(hint("←/→", "tonic"), hint("m", "mode"), hint("r", "relative")),
+		labelStyle.Render("jeu   ") + join(hint("e", "split"), hint("t", "texture"), hint("n", "notation")),
+		labelStyle.Render("sess  ") + join(hint("a", "auto"), hint("d", "drone"), hint("x", "reset"), hint("q", "quit")),
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+}
+
+// replyPanel shows the assistant's reply file content (the journal's return
+// channel), with a freshness badge so a just-arrived answer is obvious.
+func (m Model) replyPanel() string {
+	title := panelTitleStyle.Render("assistant")
+	if !m.replyAt.IsZero() {
+		stamp := m.replyAt.Format("15:04:05")
+		if time.Since(m.replyAt) < 5*time.Second {
+			title += "  " + highlightStyle.Render("• new "+stamp)
+		} else {
+			title += dimStyle.Render("  · "+stamp)
+		}
+	}
+	body := dimStyle.Render("waiting for a reply…")
+	if m.reply != "" {
+		full, _ := m.layout()
+		bw := full - 4
+		if bw < 20 {
+			bw = 20
+		}
+		body = noteStyle.Width(bw).Render(m.reply)
+	}
+	return title + "\n" + body
 }
 
 func (m Model) playingPanel(allNotes []uint8) string {
@@ -95,7 +173,7 @@ func (m Model) playingPanel(allNotes []uint8) string {
 		}
 	}
 	b.WriteString(labelStyle.Render("chord  ") + chordStr + "\n")
-	b.WriteString(labelStyle.Render("notes  ") + valueOrDash(noteNames(allNotes)) + "\n")
+	b.WriteString(labelStyle.Render("notes  ") + m.styledNotes(allNotes) + "\n")
 	b.WriteString(labelStyle.Render("melody ") + valueOrDash(noteNames(m.melody)) + "\n")
 
 	pedal := dimStyle.Render("off")
@@ -104,6 +182,24 @@ func (m Model) playingPanel(allNotes []uint8) string {
 	}
 	b.WriteString(labelStyle.Render("pedal  ") + pedal)
 	return b.String()
+}
+
+// styledNotes renders sounding notes, marking out-of-key ones (accidentals) in
+// the warn colour — so a note outside the chosen scale stands out at once.
+func (m Model) styledNotes(notes []uint8) string {
+	if len(notes) == 0 {
+		return dimStyle.Render("—")
+	}
+	parts := make([]string, len(notes))
+	for i, n := range notes {
+		name := theory.NoteName(n)
+		if m.key.InScale(n) {
+			parts[i] = noteStyle.Render(name)
+		} else {
+			parts[i] = warnStyle.Render(name)
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 func (m Model) keyPanel() string {
@@ -120,8 +216,28 @@ func (m Model) keyPanel() string {
 	default:
 		b.WriteString(dimStyle.Render("manual") + "\n")
 	}
-	b.WriteString(onOff("auto", m.keySrc == KeyAuto) + " " + onOff("drone", m.keySrc == KeyDrone) + " " + onOff("split", m.splitMelody))
+	b.WriteString(onOff("auto", m.keySrc == KeyAuto) + " " + onOff("drone", m.keySrc == KeyDrone) + " " + onOff("split", m.splitMelody) + "\n")
+	b.WriteString(labelStyle.Render("scale  ") + m.scaleLine())
 	return b.String()
+}
+
+// scaleLine shows the seven notes of the chosen scale, lighting those currently
+// sounding — the scale you pick with ←/→, m, r, made visible.
+func (m Model) scaleLine() string {
+	sounding := map[uint8]bool{}
+	for _, n := range m.sounding() {
+		sounding[n%12] = true
+	}
+	names := make([]string, 0, 7)
+	for _, pc := range m.key.ScalePCs() {
+		name := theory.PitchClassName(pc)
+		if sounding[pc] {
+			names = append(names, highlightStyle.Render(name))
+		} else {
+			names = append(names, noteStyle.Render(name))
+		}
+	}
+	return strings.Join(names, " ")
 }
 
 func (m Model) harmonyPanel() string {
