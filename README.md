@@ -30,6 +30,7 @@ where events come from.
 ```
 cmd/keys7/main.go     entry; flags --source --port --key --notation --log
 cmd/play7/main.go     output twin: plays a JSON sequence on a MIDI out device
+cmd/export7/main.go   transcribe a session journal (JSONL) into a .mid
 internal/midi/        source/output interfaces + events
   device_windows.go     //go:build windows  — WinMM input, pure Go (no CGO)
   device_other.go       //go:build !windows — clear error; use mock
@@ -41,6 +42,7 @@ internal/theory/      pure pitch math: chords, dyads, keys/modes, cadences,
 internal/sequence/    JSON sequence parsing + scheduling (pure, like theory)
 internal/ui/          Bubble Tea model + view (panels)
 internal/session/     harmonic-event log (the AI bridge)
+internal/smf/         Standard MIDI File writer (pure Go), for export7
 internal/mesh/        Forwarder seam (no-op; real-time transport later)
 ```
 
@@ -199,6 +201,22 @@ starts from one phrase. The loop it describes:
 
 The player's side of the protocol: play freely (pedal included), `t` to
 declare texture, double-tap A0 to hand the turn over.
+
+## Exporting a session
+
+A journal is a faithful capture, so it transcribes straight to a `.mid` —
+editable in Renoise, MuseScore, any DAW. Run `export7` from WSL (it reads the
+journal on the Windows side under `/mnt/c`):
+
+```bash
+make build-export7
+bin/export7 /mnt/c/Users/…/keys7/sessions/current.jsonl   # -> current.mid
+bin/export7 -bpm 72 -o take.mid session.jsonl
+```
+
+Every `note` attack/release and `pedal` move becomes a MIDI event at its
+recorded millisecond, with velocity — no re-quantisation. `-bpm` only sets the
+tempo meta; absolute timing is preserved regardless.
 
 ## Cross-platform notes
 
