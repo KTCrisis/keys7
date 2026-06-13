@@ -4,11 +4,13 @@
 # (e.g. Claude Code permissions) can whitelist this script without wildcarding
 # arbitrary pipes.
 #
-# Usage: play.sh '<sequence-json>' [port-match]
+# Usage: play.sh '<sequence-json>' [port-match] [style]
+#   style: straight (default) | ambient | orchestral | darksynth
 set -euo pipefail
 
-SEQ=${1:?usage: play.sh '<sequence-json>' [port-match]}
+SEQ=${1:?usage: play.sh '<sequence-json>' [port-match] [style]}
 PORT=${2:-Digital Piano}
+STYLE=${3:-straight}
 BIN="$(dirname "$0")/../bin/play7.exe"
 
-printf '%s' "$SEQ" | "$BIN" --port "$PORT"
+printf '%s' "$SEQ" | "$BIN" --port "$PORT" --style "$STYLE"

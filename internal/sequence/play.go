@@ -17,9 +17,12 @@ func Play(out midi.MidiOut, seq Sequence, sleep func(time.Duration)) error {
 			now = ev.At
 		}
 		var err error
-		if ev.On {
+		switch {
+		case ev.Ctrl:
+			err = out.Control(seq.Channel, ev.Note, ev.Vel)
+		case ev.On:
 			err = out.NoteOn(seq.Channel, ev.Note, ev.Vel)
-		} else {
+		default:
 			err = out.NoteOff(seq.Channel, ev.Note)
 		}
 		if err != nil {

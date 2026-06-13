@@ -33,13 +33,14 @@ type Sequence struct {
 }
 
 // Event is one scheduled MIDI action. Events are sorted by At; at the same
-// instant, note-offs come before note-ons so a re-struck note retriggers
-// cleanly instead of being killed by its own off.
+// instant, note-offs come first, then control changes (so a pedal-down catches
+// the chord), then note-ons — a re-struck note retriggers cleanly.
 type Event struct {
 	At   time.Duration
 	On   bool
-	Note uint8
-	Vel  uint8 // note-ons only
+	Note uint8 // note number, or the controller number for a control event
+	Vel  uint8 // note velocity, or the controller value for a control event
+	Ctrl bool  // a control change (e.g. sustain pedal), not a note
 }
 
 // fileSeq / fileStep / fileVoice mirror the JSON document:
@@ -73,7 +74,11 @@ type fileStep struct {
 	Notes    []string `json:"notes"`
 	Beats    float64  `json:"beats"`
 	Velocity uint8    `json:"velocity"`
+	Pedal    string   `json:"pedal,omitempty"` // "down" | "up": a sustain change at the step's onset
 }
+
+// sustainController is CC64, the damper (sustain) pedal.
+const sustainController = 64
 
 // Parse reads, validates and compiles a JSON sequence into timed events.
 func Parse(r io.Reader) (Sequence, error) {
@@ -141,6 +146,13 @@ func Parse(r io.Reader) (Sequence, error) {
 				return Sequence{}, fmt.Errorf("voice %d step %d: bad velocity %d: must be 1-127", vi+1, si+1, fs.Velocity)
 			}
 			on, off := beatsToTime(cursor, f.Tempo), beatsToTime(cursor+beats, f.Tempo)
+			if fs.Pedal != "" {
+				val, err := pedalValue(fs.Pedal)
+				if err != nil {
+					return Sequence{}, fmt.Errorf("voice %d step %d: %w", vi+1, si+1, err)
+				}
+				seq.Events = append(seq.Events, Event{At: on, Ctrl: true, Note: sustainController, Vel: val})
+			}
 			for _, name := range fs.Notes {
 				n, err := theory.ParseNote(name)
 				if err != nil {
@@ -160,9 +172,35 @@ func Parse(r io.Reader) (Sequence, error) {
 		if a.At != b.At {
 			return a.At < b.At
 		}
-		return !a.On && b.On // same instant: offs first
+		return eventOrder(a) < eventOrder(b) // same instant: offs, then control, then ons
 	})
 	return seq, nil
+}
+
+// eventOrder ranks simultaneous events: note-offs (0) before control changes (1)
+// before note-ons (2) — so a pedal-down catches the chord it precedes, and a
+// re-struck note isn't killed by its own off.
+func eventOrder(e Event) int {
+	switch {
+	case e.Ctrl:
+		return 1
+	case !e.On:
+		return 0
+	default:
+		return 2
+	}
+}
+
+// pedalValue maps a step's "pedal" field to a CC64 value.
+func pedalValue(s string) (uint8, error) {
+	switch s {
+	case "down":
+		return 127, nil
+	case "up":
+		return 0, nil
+	default:
+		return 0, fmt.Errorf("bad pedal %q: use \"down\" or \"up\"", s)
+	}
 }
 
 // beatsToTime converts a beat position to wall time at a tempo. Positions stay

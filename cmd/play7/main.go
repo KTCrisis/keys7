@@ -11,8 +11,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	"keys7/internal/midi"
@@ -23,6 +25,8 @@ func main() {
 	list := flag.Bool("list", false, "list MIDI output devices and exit")
 	port := flag.String("port", "", `output port name match, e.g. "P-125" (first device if empty)`)
 	outKind := flag.String("out", "device", "MIDI output: device|mock (mock prints messages instead of playing)")
+	style := flag.String("style", "straight", "playing feel: "+strings.Join(sequence.StyleNames(), "|"))
+	seed := flag.Int64("seed", 0, "random seed for --style humanisation (0 = time-based)")
 	flag.Parse()
 
 	if *list {
@@ -49,6 +53,16 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
+
+	st, ok := sequence.StyleByName(*style)
+	if !ok {
+		fail(fmt.Errorf("unknown style %q (have: %s)", *style, strings.Join(sequence.StyleNames(), ", ")))
+	}
+	sd := *seed
+	if sd == 0 {
+		sd = time.Now().UnixNano()
+	}
+	seq = st.Apply(seq, rand.New(rand.NewSource(sd)))
 
 	out, err := midi.NewOut(*outKind, *port, os.Stdout)
 	if err != nil {
