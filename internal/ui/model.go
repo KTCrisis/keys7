@@ -17,6 +17,14 @@ type eventMsg midi.Event
 // sourceClosedMsg signals the MIDI source channel has closed.
 type sourceClosedMsg struct{}
 
+// tickMsg drives a slow heartbeat so time-based UI (the MIDI liveness dot, the
+// reply "new" flash) keeps refreshing even when no MIDI or reply arrives.
+type tickMsg time.Time
+
+func heartbeat() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
+}
+
 const maxRecent = 16
 
 // Model is the phase-1 UI state: which source we're on, the currently held
@@ -44,6 +52,12 @@ type Model struct {
 	replyPath   string    // assistant reply file (--reply); empty = no panel
 	reply       string    // last content read from it
 	texture     Texture   // declared playing texture (cycled with `t`)
+
+	// ux state: terminal size (responsive layout), last-seen note (liveness
+	// dot), and when the reply last changed (the "new" flash).
+	width, height int
+	lastNoteAt    time.Time
+	replyAt       time.Time
 
 	// derived chord state, recomputed when the held notes change
 	core, melody []uint8
@@ -113,10 +127,11 @@ func New(sourceKind, port string, key theory.Key, keySrc KeySource, events <-cha
 }
 
 func (m Model) Init() tea.Cmd {
+	cmds := []tea.Cmd{waitForEvent(m.events), heartbeat()}
 	if m.replyPath != "" {
-		return tea.Batch(waitForEvent(m.events), replyTick(m.replyPath))
+		cmds = append(cmds, replyTick(m.replyPath))
 	}
-	return waitForEvent(m.events)
+	return tea.Batch(cmds...)
 }
 
 // waitForEvent blocks on the MIDI channel from inside a tea.Cmd. Bubble Tea
@@ -189,12 +204,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.logKeyIfChanged()
 	case eventMsg:
 		ev := midi.Event(msg)
+		if ev.Kind == midi.NoteOn && ev.Data2 > 0 {
+			m.lastNoteAt = time.Now() // reception time, for the liveness dot
+		}
 		m.apply(ev)
 		_ = m.fwd.Forward(ev) // phase-1 seam: NopForwarder, wired for the mesh later
 		return m, waitForEvent(m.events)
 	case replyMsg:
-		m.reply = string(msg)
+		s := string(msg)
+		if s != "" && s != m.reply {
+			m.replyAt = time.Now() // a genuinely new reply — flash it
+		}
+		m.reply = s
 		return m, replyTick(m.replyPath)
+	case tickMsg:
+		return m, heartbeat() // re-arm; the redraw refreshes time-based UI
+	case tea.WindowSizeMsg:
+		m.width, m.height = msg.Width, msg.Height
 	case sourceClosedMsg:
 		m.closed = true
 	}
