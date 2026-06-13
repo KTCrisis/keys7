@@ -26,6 +26,27 @@ func TestModeOverTonicChurchModes(t *testing.T) {
 	}
 }
 
+func TestDegreeName(t *testing.T) {
+	cases := []struct {
+		key    Key
+		degree int
+		want   string
+	}{
+		{Key{Tonic: 0, Mode: Major}, 1, "tonique"},
+		{Key{Tonic: 0, Mode: Major}, 3, "médiante"},
+		{Key{Tonic: 0, Mode: Major}, 6, "sus-dominante"},
+		{Key{Tonic: 0, Mode: Major}, 7, "sensible"},        // B: a semitone below C
+		{Key{Tonic: 9, Mode: NaturalMinor}, 7, "sous-tonique"}, // G: a whole tone below A
+		{Key{Tonic: 9, Mode: HarmonicMinor}, 7, "sensible"},    // G#: raised, a semitone below
+		{Key{Tonic: 2, Mode: Dorian}, 7, "sous-tonique"},       // C: a whole tone below D
+	}
+	for _, c := range cases {
+		if got := DegreeName(c.key, c.degree); got != c.want {
+			t.Errorf("%v degree %d = %q, want %q", c.key, c.degree, got, c.want)
+		}
+	}
+}
+
 // TestChurchModeDiatonics sanity-checks that the new modes plug into the rest of
 // theory: a D dorian scale yields seven triads with the expected qualities
 // (i ii bIII IV v vi° bVII).
